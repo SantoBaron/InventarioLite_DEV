@@ -27,6 +27,7 @@
         <button id="btnStart">Iniciar salida</button>
         <button id="btnFinish" class="secondary" disabled>Finalizar salida</button>
         <button id="btnDayClose" class="secondary">Cierre de día y exportar</button>
+        <button id="btnResetSession" class="danger" disabled>Reset salida actual</button>
       </div>
       <p id="sessionInfo" class="muted">No hay salida activa.</p>
     </section>
@@ -36,6 +37,7 @@
       <input id="scanInput" class="scan" autocomplete="off" placeholder="Escanear GS1 o escribir referencia + Enter" disabled />
       <div class="actions compact">
         <button id="btnManual" class="secondary" disabled>Alta manual</button>
+        <button id="btnManualCode" class="secondary" disabled>Código manual</button>
         <button id="btnUndo" class="secondary" disabled>Deshacer última</button>
       </div>
       <div id="msg" class="msg"></div>
@@ -58,6 +60,7 @@
               <th>Referencia</th>
               <th>Lote/Serie</th>
               <th>Cantidad</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -84,6 +87,19 @@
       <menu>
         <button id="btnManualCancel" type="button" class="secondary">Cancelar</button>
         <button type="submit">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="manualCodeDialog">
+    <form id="manualCodeForm" method="dialog" class="manual-form">
+      <h3>Entrada manual de código</h3>
+      <label>Código GS1 / Referencia
+        <input id="manualCodeInput" autocomplete="off" placeholder="Ej: 02REFÊ10LOTEÊ04SUBÊ21" required />
+      </label>
+      <menu>
+        <button id="btnManualCodeCancel" type="button" class="secondary">Cancelar</button>
+        <button type="submit">Procesar</button>
       </menu>
     </form>
   </dialog>

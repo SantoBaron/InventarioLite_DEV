@@ -166,6 +166,15 @@ export async function getIssueSessionsByDay(db, dayKey) {
   });
 }
 
+export async function deleteIssueSession(db, id) {
+  return new Promise((resolve, reject) => {
+    const store = txIssueSessions(db, "readwrite");
+    const req = store.delete(id);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 export async function putIssueLine(db, line) {
   return new Promise((resolve, reject) => {
     const store = txIssueLines(db, "readwrite");

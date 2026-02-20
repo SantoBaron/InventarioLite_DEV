@@ -61,11 +61,13 @@ button, .back {
 }
 button { background: var(--primary); color: #fff; }
 button.secondary, .back { background: var(--secondary); color: #1d2f4d; }
+button.danger { background: var(--danger); color: #fff; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .muted { color: var(--muted); }
 .msg { min-height: 24px; font-weight: 600; }
 .msg.ok { color: #117a36; }
 .msg.err { color: var(--danger); }
+.msg.warn { color: #b27200; }
 .stats {
   margin-top: 8px;
   display: grid;
@@ -76,6 +78,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .table-wrap { overflow: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { border-bottom: 1px solid #e5ebf5; padding: 8px; text-align: left; }
+button.mini { min-height: 34px; padding: 6px 10px; font-size: 13px; }
 .manual-form { display: grid; gap: 8px; min-width: min(92vw, 380px); }
 menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 0; }
 @media (max-width: 700px) {

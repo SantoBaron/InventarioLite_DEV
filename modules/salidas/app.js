@@ -7,6 +7,7 @@ import {
   findIssueLineBySessionAggKey,
   getIssueLinesByDay,
   getIssueSessionsByDay,
+  deleteIssueSession,
 } from "../inventario/db.js";
 import { parseGs1 } from "../inventario/gs1.js";
 
@@ -16,9 +17,11 @@ const el = {
   btnStart: document.getElementById("btnStart"),
   btnFinish: document.getElementById("btnFinish"),
   btnDayClose: document.getElementById("btnDayClose"),
+  btnResetSession: document.getElementById("btnResetSession"),
   sessionInfo: document.getElementById("sessionInfo"),
   scanInput: document.getElementById("scanInput"),
   btnManual: document.getElementById("btnManual"),
+  btnManualCode: document.getElementById("btnManualCode"),
   btnUndo: document.getElementById("btnUndo"),
   msg: document.getElementById("msg"),
   linesCount: document.getElementById("linesCount"),
@@ -32,6 +35,10 @@ const el = {
   manualSublote: document.getElementById("manualSublote"),
   manualQty: document.getElementById("manualQty"),
   btnManualCancel: document.getElementById("btnManualCancel"),
+  manualCodeDialog: document.getElementById("manualCodeDialog"),
+  manualCodeForm: document.getElementById("manualCodeForm"),
+  manualCodeInput: document.getElementById("manualCodeInput"),
+  btnManualCodeCancel: document.getElementById("btnManualCodeCancel"),
 };
 
 let db;
@@ -104,6 +111,11 @@ function normalizeScannerRaw(raw) {
   return s;
 }
 
+async function wasDayAlreadyExported() {
+  const sessions = await getIssueSessionsByDay(db, dayKey());
+  return sessions.some((s) => s.status === "exported");
+}
+
 async function refreshSessionLines() {
   if (!currentSession) {
     sessionLines = [];
@@ -125,19 +137,27 @@ async function refreshSessionLines() {
         <td>${escapeHtml(l.ref)}</td>
         <td>${escapeHtml(l.serial || l.lote || "-")}</td>
         <td>${l.cantidad}</td>
+        <td><button class="mini danger" data-action="delete" data-id="${escapeHtml(l.id)}" type="button">Borrar</button></td>
       </tr>
     `)
     .join("");
 }
 
-function setEnabledForOperation(enabled) {
+async function updateResetAvailability() {
+  const disabled = !currentSession || await wasDayAlreadyExported();
+  el.btnResetSession.disabled = disabled;
+}
+
+async function setEnabledForOperation(enabled) {
   el.scanInput.disabled = !enabled;
   el.btnManual.disabled = !enabled;
+  el.btnManualCode.disabled = !enabled;
   el.btnUndo.disabled = !enabled;
   el.btnFinish.disabled = !enabled;
   el.btnStart.disabled = enabled;
   el.cecoInput.disabled = enabled;
   el.operarioInput.disabled = enabled;
+  await updateResetAvailability();
 }
 
 async function startSession() {
@@ -159,7 +179,7 @@ async function startSession() {
   };
 
   await putIssueSession(db, currentSession);
-  setEnabledForOperation(true);
+  await setEnabledForOperation(true);
   lastAction = null;
   await refreshSessionLines();
   el.sessionInfo.textContent = `Salida activa · CECO ${ceco} · Operario ${operario}`;
@@ -175,7 +195,7 @@ async function finishSession() {
   setMsg(`Salida finalizada (${currentSession.ceco}).`, "ok");
   currentSession = null;
   lastAction = null;
-  setEnabledForOperation(false);
+  await setEnabledForOperation(false);
   el.sessionInfo.textContent = "No hay salida activa.";
   el.lastRead.textContent = "—";
   await refreshSessionLines();
@@ -216,7 +236,7 @@ async function addLineFromData(data, qty = 1) {
       sublote: serial,
       serial,
       caducidad,
-      cantidad: 1, // Ref-Lote-Sublote existe unitariamente
+      cantidad: 1,
       createdAt: now,
       dayKey: currentSession.dayKey,
       exportedAt: null,
@@ -312,6 +332,17 @@ async function undoLast() {
   await refreshSessionLines();
 }
 
+async function deleteRowById(id) {
+  const line = sessionLines.find((x) => x.id === id);
+  if (!line) return;
+  const ok = window.confirm(`Eliminar registro ${line.ref} / ${line.lote ?? "-"} / ${line.serial ?? "-"}?`);
+  if (!ok) return;
+  await deleteIssueLine(db, line.id);
+  if (lastAction?.lineId === line.id) lastAction = null;
+  setMsg("Registro eliminado.", "warn");
+  await refreshSessionLines();
+}
+
 function exportCsv(rows, filename) {
   const csv = rows.map((row) => row.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(";")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -374,7 +405,37 @@ async function closeDayAndExport() {
     await putIssueSession(db, s);
   }
 
+  await updateResetAvailability();
   setMsg(`Cierre de día completado (${lines.length} líneas).`, "ok");
+}
+
+async function resetCurrentSession() {
+  if (!currentSession) {
+    setMsg("No hay salida activa para borrar.", "err");
+    return;
+  }
+
+  if (await wasDayAlreadyExported()) {
+    setMsg("No se permite reset: el día ya fue exportado/cerrado.", "err");
+    return;
+  }
+
+  const ok = window.confirm("Se borrará todo el registro, continuar?");
+  if (!ok) return;
+
+  const lines = await getIssueLinesBySession(db, currentSession.id);
+  for (const line of lines) {
+    await deleteIssueLine(db, line.id);
+  }
+  await deleteIssueSession(db, currentSession.id);
+
+  currentSession = null;
+  lastAction = null;
+  await setEnabledForOperation(false);
+  el.sessionInfo.textContent = "No hay salida activa.";
+  el.lastRead.textContent = "—";
+  setMsg("Salida actual borrada por completo.", "warn");
+  await refreshSessionLines();
 }
 
 function hookScannerInput() {
@@ -382,7 +443,7 @@ function hookScannerInput() {
   let timer = null;
 
   function shouldIgnoreScannerCapture(evtTarget) {
-    if (el.manualDialog?.open) return true;
+    if (el.manualDialog?.open || el.manualCodeDialog?.open) return true;
 
     const active = evtTarget || document.activeElement;
     if (!active) return false;
@@ -461,6 +522,7 @@ function bindEvents() {
   safeOn(el.btnFinish, "click", () => finishSession().catch((e) => setMsg(e.message, "err")));
   safeOn(el.btnUndo, "click", () => undoLast().catch((e) => setMsg(e.message, "err")));
   safeOn(el.btnDayClose, "click", () => closeDayAndExport().catch((e) => setMsg(e.message, "err")));
+  safeOn(el.btnResetSession, "click", () => resetCurrentSession().catch((e) => setMsg(e.message, "err")));
 
   safeOn(el.btnManual, "click", () => {
     el.manualRef.value = "";
@@ -471,7 +533,15 @@ function bindEvents() {
     setTimeout(() => el.manualRef.focus(), 30);
   });
 
+  safeOn(el.btnManualCode, "click", () => {
+    el.manualCodeInput.value = "";
+    el.manualCodeDialog.showModal();
+    setTimeout(() => el.manualCodeInput.focus(), 30);
+  });
+
   safeOn(el.btnManualCancel, "click", () => el.manualDialog.close());
+  safeOn(el.btnManualCodeCancel, "click", () => el.manualCodeDialog.close());
+
   safeOn(el.manualForm, "submit", (evt) => {
     evt.preventDefault();
     const ref = norm(el.manualRef.value);
@@ -492,11 +562,29 @@ function bindEvents() {
       .then(() => el.manualDialog.close())
       .catch((e) => setMsg(e.message, "err"));
   });
+
+  safeOn(el.manualCodeForm, "submit", (evt) => {
+    evt.preventDefault();
+    const raw = norm(el.manualCodeInput.value);
+    if (!raw) {
+      setMsg("Debe indicar un código manual.", "err");
+      return;
+    }
+    handleScan(raw)
+      .then(() => el.manualCodeDialog.close())
+      .catch((e) => setMsg(e.message, "err"));
+  });
+
+  safeOn(el.tbody, "click", (evt) => {
+    const btn = evt.target.closest("button[data-action='delete']");
+    if (!btn) return;
+    deleteRowById(btn.dataset.id).catch((e) => setMsg(e.message, "err"));
+  });
 }
 
 async function init() {
   db = await openDb();
-  setEnabledForOperation(false);
+  await setEnabledForOperation(false);
   bindEvents();
   hookScannerInput();
   await refreshSessionLines();
