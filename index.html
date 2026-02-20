@@ -88,11 +88,14 @@
       transform: translateY(-1px);
     }
 
-    .module-btn.disabled {
-      background: var(--disabled);
-      color: #334159;
-      cursor: not-allowed;
-      filter: saturate(0.75);
+    .module-btn {
+      background: var(--secondary, #d9e2f2);
+      color: #1d2f4d;
+    }
+
+    .module-btn.secondary {
+      background: var(--secondary, #d9e2f2);
+      color: #1d2f4d;
     }
 
     .hint {
@@ -109,7 +112,7 @@
 
     <nav class="modules" aria-label="Módulos">
       <a class="module-btn primary" href="./modules/inventario/index.html">Inventario</a>
-      <button class="module-btn disabled" type="button" disabled aria-disabled="true">Salidas (próximamente)</button>
+      <a class="module-btn" href="./modules/salidas/index.html">Salidas</a>
     </nav>
 
     <p class="hint">Diseñado para un uso rápido en móvil y PDA.</p>
