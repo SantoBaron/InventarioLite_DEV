@@ -1,0 +1,186 @@
+:root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+body { margin: 0; background: #0b0e14; color: #e8eefc; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+body.pda-mode {
+  background: #dff3ff;
+  color: #0f2d4a;
+}
+body.pda-mode .muted,
+body.pda-mode .label { color: #35638e; }
+body.pda-mode .card,
+body.pda-mode .table-wrap { border-color: #8fc3ea; background: #eef8ff; }
+body.pda-mode thead th { color: #35638e; background: #d9efff; border-bottom-color: #8fc3ea; }
+body.pda-mode tbody td { border-bottom-color: #c5e3f8; }
+body.pda-mode tbody tr:hover td { background: #e3f4ff; }
+body.pda-mode button { border-color: #84b9e1; background: #d7edff; color: #113a5d; }
+body.pda-mode button:hover { background: #c8e6ff; }
+body.pda-mode button.secondary { background: #d2ebff; }
+body.pda-mode .mobile-actions-menu > summary { border-color: #84b9e1; background: #d2ebff; color: #113a5d; }
+body.pda-mode .row-actions-pop { border-color: #8fc3ea; background: #eef8ff; }
+body.pda-mode button.secondary.active { border-color: #2f85d8; background: #74beff; color: #073357; }
+body.pda-mode button.danger { border-color: #d68585; background: #ffd8d8; color: #6f1919; }
+body.pda-mode button.warn { border-color: #d1b16d; background: #fff2cc; color: #5f470f; }
+body.pda-mode .msg.ok { color: #0c8b5a; }
+body.pda-mode .msg.err { color: #c33939; }
+body.pda-mode .msg.warn { color: #8f6a00; }
+
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0; font-size: 16px; }
+.muted { color: #9aa7c3; margin: 6px 0 0; }
+.muted.compact { margin-top: 0; font-size: 13px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button { border: 1px solid #2a3550; background: #141b2b; color: #e8eefc; padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+button:hover { background: #18213a; }
+button.secondary { background: #101826; }
+button.secondary.active { border-color: #2e6b4a; background: #123222; }
+button.secondary.active:hover { background: #18452f; }
+button.warn { border-color: #6b592a; background: #2d2412; }
+button.warn:hover { background: #3c2e16; }
+button.danger { border-color: #6b2a2a; background: #2a1414; }
+button.danger:hover { background: #351717; }
+button.mini { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+
+.status { margin-top: 14px; }
+.card { border: 1px solid #22304d; background: #0f1524; border-radius: 14px; padding: 14px; }
+.label { font-size: 12px; color: #9aa7c3; }
+.big { font-size: 26px; font-weight: 700; margin-top: 6px; }
+.row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.msg { margin-top: 10px; min-height: 20px; }
+.msg.ok { color: #76e3a2; }
+.msg.err { color: #ff7b7b; }
+.msg.warn { color: #ffd36a; }
+.quick-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mobile-actions-menu { display: none; margin-top: 10px; }
+.mobile-actions-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid #2a3550;
+  background: #101826;
+  color: #e8eefc;
+  padding: 10px 12px;
+  border-radius: 10px;
+  user-select: none;
+}
+.mobile-actions-menu > summary::-webkit-details-marker { display: none; }
+.mobile-actions-list { margin-top: 8px; display: grid; gap: 8px; }
+.mobile-actions-list > button { width: 100%; text-align: left; }
+
+.row-actions-desktop { display: flex; gap: 6px; }
+.row-actions-mobile { display: none; position: relative; }
+.row-actions-trigger { list-style: none; user-select: none; }
+.row-actions-trigger::-webkit-details-marker { display: none; }
+.row-actions-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 4;
+  background: #0f1524;
+  border: 1px solid #22304d;
+  border-radius: 10px;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  min-width: 130px;
+}
+
+
+.table { margin-top: 14px; }
+.table-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.table-wrap { border: 1px solid #22304d; background: #0f1524; border-radius: 14px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+thead th { text-align: left; font-size: 12px; color: #9aa7c3; background: #0d1320; padding: 10px; border-bottom: 1px solid #22304d; }
+tbody td { padding: 10px; border-bottom: 1px solid #1e2a44; }
+tbody tr:hover td { background: #111a2d; }
+.manual-row td {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: #ffd36a;
+  text-underline-offset: 4px;
+}
+.num { text-align: right; }
+.actions-cell { white-space: nowrap; display: flex; gap: 6px; }
+
+.scan-input {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.manual-dialog {
+  border: 1px solid #22304d;
+  background: #0f1524;
+  color: #e8eefc;
+  border-radius: 12px;
+  width: min(460px, calc(100vw - 24px));
+}
+
+.manual-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+
+.manual-form { display: grid; gap: 10px; }
+.manual-form h3 { margin: 0 0 2px; }
+.manual-form label { display: grid; gap: 4px; font-size: 13px; color: #9aa7c3; }
+.manual-form input {
+  border: 1px solid #2a3550;
+  background: #0b1220;
+  color: #e8eefc;
+  padding: 9px 10px;
+  border-radius: 8px;
+}
+.manual-form .checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.manual-form .checkbox-label input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+.manual-form menu { margin: 6px 0 0; padding: 0; display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 980px) {
+  .top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions > button,
+  .quick-actions > button {
+    flex: 1 1 180px;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+  }
+
+  .actions-cell {
+    flex-wrap: wrap;
+  }
+
+  body.pda-mode .actions,
+  body.pda-mode .quick-actions {
+    display: none;
+  }
+
+  body.pda-mode .mobile-actions-menu {
+    display: block;
+  }
+
+  body.pda-mode .row-actions-desktop {
+    display: none;
+  }
+
+  body.pda-mode .row-actions-mobile {
+    display: inline-block;
+  }
+}

@@ -1,1 +1,2 @@
-# InventarioLite_DEV
+# InventarioLite
+Modulo de inventario simple
