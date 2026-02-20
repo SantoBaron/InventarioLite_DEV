@@ -1,0 +1,86 @@
+:root {
+  --bg: #f3f6fb;
+  --card: #fff;
+  --text: #152238;
+  --muted: #5f6d83;
+  --primary: #0b5ed7;
+  --secondary: #d9e2f2;
+  --danger: #b42318;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+h1, h2, h3 { margin: 0 0 10px; }
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 6px 18px rgba(15, 30, 55, .08);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+label { display: grid; gap: 4px; font-weight: 600; }
+input {
+  border: 1px solid #c5cfdd;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 16px;
+}
+.scan { width: 100%; margin-bottom: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.actions.compact { margin-top: 0; }
+button, .back {
+  border: 0;
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+button { background: var(--primary); color: #fff; }
+button.secondary, .back { background: var(--secondary); color: #1d2f4d; }
+button.danger { background: var(--danger); color: #fff; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.muted { color: var(--muted); }
+.msg { min-height: 24px; font-weight: 600; }
+.msg.ok { color: #117a36; }
+.msg.err { color: var(--danger); }
+.msg.warn { color: #b27200; }
+.stats {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  font-size: 14px;
+}
+.table-wrap { overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #e5ebf5; padding: 8px; text-align: left; }
+button.mini { min-height: 34px; padding: 6px 10px; font-size: 13px; }
+.manual-form { display: grid; gap: 8px; min-width: min(92vw, 380px); }
+menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 0; }
+@media (max-width: 700px) {
+  .grid2, .stats { grid-template-columns: 1fr; }
+}
