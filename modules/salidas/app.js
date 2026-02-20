@@ -68,6 +68,11 @@ function setMsg(text = "", kind = "") {
   el.msg.className = `msg ${kind}`;
 }
 
+function safeOn(node, evt, fn) {
+  if (!node) return;
+  node.addEventListener(evt, fn);
+}
+
 function buildAggKey(sessionId, ceco, ref, lote, caducidad) {
   return [sessionId, ceco, ref || "", lote || "", caducidad || ""].join("|");
 }
@@ -329,19 +334,91 @@ async function closeDayAndExport() {
   setMsg(`Cierre de día completado (${lines.length} líneas).`, "ok");
 }
 
+function hookScannerInput() {
+  let buffer = "";
+  let timer = null;
+
+  function shouldIgnoreScannerCapture(evtTarget) {
+    if (el.manualDialog?.open) return true;
+
+    const active = evtTarget || document.activeElement;
+    if (!active) return false;
+
+    if (active === el.scanInput) return false;
+
+    const ownerDialog = active.closest?.("dialog");
+    if (ownerDialog?.open) return true;
+
+    if (active.isContentEditable) return true;
+
+    const tag = active.tagName?.toUpperCase?.() || "";
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
+
+  function scheduleFlush() {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (buffer.trim()) flush();
+    }, 90);
+  }
+
+  function flush() {
+    const value = buffer.trim();
+    buffer = "";
+    if (el.scanInput) el.scanInput.value = "";
+    clearTimeout(timer);
+    timer = null;
+
+    if (!value) return;
+
+    onScan(value)
+      .catch((e) => setMsg(e.message, "err"));
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (shouldIgnoreScannerCapture(e.target)) return;
+
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      flush();
+      return;
+    }
+
+    if (e.key === "Backspace") {
+      buffer = buffer.slice(0, -1);
+      scheduleFlush();
+      return;
+    }
+
+    if (e.key.length === 1) {
+      buffer += e.key;
+      scheduleFlush();
+    }
+  });
+
+  safeOn(el.scanInput, "input", () => {
+    if (shouldIgnoreScannerCapture(el.scanInput)) return;
+    const v = el.scanInput?.value ?? "";
+    if (!v) return;
+    buffer = v;
+    scheduleFlush();
+  });
+
+  safeOn(el.scanInput, "paste", () => {
+    if (shouldIgnoreScannerCapture(el.scanInput)) return;
+    const v = el.scanInput?.value ?? "";
+    if (!v) return;
+    buffer = v;
+    scheduleFlush();
+  });
+}
+
 function bindEvents() {
   el.btnStart.addEventListener("click", () => startSession().catch((e) => setMsg(e.message, "err")));
   el.btnFinish.addEventListener("click", () => finishSession().catch((e) => setMsg(e.message, "err")));
   el.btnUndo.addEventListener("click", () => undoLast().catch((e) => setMsg(e.message, "err")));
   el.btnDayClose.addEventListener("click", () => closeDayAndExport().catch((e) => setMsg(e.message, "err")));
-
-  el.scanInput.addEventListener("keydown", (evt) => {
-    if (evt.key !== "Enter") return;
-    evt.preventDefault();
-    const raw = el.scanInput.value;
-    el.scanInput.value = "";
-    onScan(raw).catch((e) => setMsg(e.message, "err"));
-  });
 
   el.btnManual.addEventListener("click", () => {
     el.manualRef.value = "";
@@ -375,6 +452,7 @@ async function init() {
   db = await openDb();
   setEnabledForOperation(false);
   bindEvents();
+  hookScannerInput();
   await refreshSessionLines();
 }
 

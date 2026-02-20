@@ -41,6 +41,24 @@ button.danger { border-color: #6b2a2a; background: #2a1414; }
 button.danger:hover { background: #351717; }
 button.mini { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
 
+a.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border: 1px solid #2a3550;
+  background: #141b2b;
+  color: #e8eefc;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+a.link-button:hover { background: #18213a; }
+a.link-button.secondary { background: #101826; }
+body.pda-mode a.link-button { border-color: #84b9e1; background: #d7edff; color: #113a5d; }
+body.pda-mode a.link-button.secondary { background: #d2ebff; }
+
 .status { margin-top: 14px; }
 .card { border: 1px solid #22304d; background: #0f1524; border-radius: 14px; padding: 14px; }
 .label { font-size: 12px; color: #9aa7c3; }
@@ -66,7 +84,8 @@ button.mini { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
 }
 .mobile-actions-menu > summary::-webkit-details-marker { display: none; }
 .mobile-actions-list { margin-top: 8px; display: grid; gap: 8px; }
-.mobile-actions-list > button { width: 100%; text-align: left; }
+.mobile-actions-list > button,
+.mobile-actions-list > a.link-button { width: 100%; text-align: left; }
 
 .row-actions-desktop { display: flex; gap: 6px; }
 .row-actions-mobile { display: none; position: relative; }
@@ -155,6 +174,7 @@ tbody tr:hover td { background: #111a2d; }
   }
 
   .actions > button,
+  .actions > a.link-button,
   .quick-actions > button {
     flex: 1 1 180px;
   }
