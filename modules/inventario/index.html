@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventario - AGQ Lite</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="top-bar">
+        <a class="back-link" href="../../index.html">← Home</a>
+        <h1>Inventario</h1>
+      </header>
+
+      <section class="card">
+        <h2>Registro rápido</h2>
+        <form id="inventory-form" class="form-grid">
+          <label>
+            Producto
+            <input id="product-name" name="name" required maxlength="80" placeholder="Ej: Caja tornillos" />
+          </label>
+          <label>
+            Cantidad
+            <input id="product-qty" name="quantity" required type="number" min="1" step="1" placeholder="Ej: 10" />
+          </label>
+          <button type="submit">Agregar al inventario</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Items guardados</h2>
+        <ul id="inventory-list" class="inventory-list" aria-live="polite"></ul>
+        <p id="empty-state" class="empty-state">No hay productos cargados.</p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
