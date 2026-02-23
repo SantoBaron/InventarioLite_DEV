@@ -5,9 +5,9 @@ import {
   getIssueLinesBySession,
   deleteIssueLine,
   findIssueLineBySessionAggKey,
-  getIssueLinesByDay,
-  getIssueSessionsByDay,
   deleteIssueSession,
+  putIssueRequest,
+  getIssueRequestsByDay,
 } from "../inventario/db.js";
 import { parseGs1 } from "../inventario/gs1.js";
 
@@ -16,7 +16,6 @@ const el = {
   operarioInput: document.getElementById("operarioInput"),
   btnStart: document.getElementById("btnStart"),
   btnFinish: document.getElementById("btnFinish"),
-  btnDayClose: document.getElementById("btnDayClose"),
   btnResetSession: document.getElementById("btnResetSession"),
   sessionInfo: document.getElementById("sessionInfo"),
   scanInput: document.getElementById("scanInput"),
@@ -44,63 +43,21 @@ const el = {
 let db;
 let currentSession = null;
 let sessionLines = [];
-let lastAction = null; // { type: 'insert'|'merge', lineId, prevQty }
+let lastAction = null;
 
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function dayKey(ts = Date.now()) {
-  return new Date(ts).toISOString().slice(0, 10);
-}
-
-function hour(ts) {
-  return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function norm(s) {
-  return (s ?? "").trim();
-}
-
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+const dayKey = (ts = Date.now()) => new Date(ts).toISOString().slice(0, 10);
+const hour = (ts) => new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const norm = (s) => (s ?? "").trim();
+const safeOn = (n, e, f) => n && n.addEventListener(e, f);
 
 function setMsg(text = "", kind = "") {
   el.msg.textContent = text;
   el.msg.className = `msg ${kind}`;
 }
 
-function safeOn(node, evt, fn) {
-  if (!node) return;
-  node.addEventListener(evt, fn);
-}
-
 function buildAggKey(sessionId, ceco, ref, lote, caducidad) {
   return [sessionId, ceco, ref || "", lote || "", caducidad || ""].join("|");
-}
-
-function buildSerialKey(ref, lote, serial) {
-  return [ref || "", lote || "", serial || ""].join("|").toUpperCase();
-}
-
-function parseCommand(raw) {
-  const s = norm(raw).toUpperCase();
-  if (s === "FIN" || s === "FINALIZAR") return { cmd: "FIN" };
-  if (s === "CIERRE" || s === "CIERRE DIA") return { cmd: "DAY_CLOSE" };
-  return null;
-}
-
-function stripDemoPrefix(raw) {
-  let s = (raw ?? "").trim();
-  const up = s.toUpperCase();
-  if (up === "DEMO") return "";
-  if (up.startsWith("DEMO")) s = s.slice(4).trim();
-  return s;
 }
 
 function normalizeScannerRaw(raw) {
@@ -110,42 +67,29 @@ function normalizeScannerRaw(raw) {
   s = s.replace(/Ê+/g, "Ê");
   return s;
 }
-
-async function wasDayAlreadyExported() {
-  const sessions = await getIssueSessionsByDay(db, dayKey());
-  return sessions.some((s) => s.status === "exported");
+function stripDemoPrefix(raw) {
+  let s = (raw ?? "").trim();
+  const up = s.toUpperCase();
+  if (up === "DEMO") return "";
+  if (up.startsWith("DEMO")) s = s.slice(4).trim();
+  return s;
 }
 
 async function refreshSessionLines() {
-  if (!currentSession) {
-    sessionLines = [];
-  } else {
-    sessionLines = (await getIssueLinesBySession(db, currentSession.id)).sort((a, b) => a.createdAt - b.createdAt);
-  }
-
-  let units = 0;
-  for (const line of sessionLines) units += Number(line.cantidad || 0);
-
+  sessionLines = currentSession ? (await getIssueLinesBySession(db, currentSession.id)).sort((a, b) => a.createdAt - b.createdAt) : [];
+  const units = sessionLines.reduce((acc, l) => acc + Number(l.cantidad || 0), 0);
   el.linesCount.textContent = String(sessionLines.length);
   el.unitsCount.textContent = String(units);
-
-  el.tbody.innerHTML = sessionLines
-    .map((l) => `
-      <tr>
-        <td>${hour(l.createdAt)}</td>
-        <td>${escapeHtml(l.ceco)}</td>
-        <td>${escapeHtml(l.ref)}</td>
-        <td>${escapeHtml(l.serial || l.lote || "-")}</td>
-        <td>${l.cantidad}</td>
-        <td><button class="mini danger" data-action="delete" data-id="${escapeHtml(l.id)}" type="button">Borrar</button></td>
-      </tr>
-    `)
-    .join("");
-}
-
-async function updateResetAvailability() {
-  const disabled = !currentSession || await wasDayAlreadyExported();
-  el.btnResetSession.disabled = disabled;
+  el.tbody.innerHTML = sessionLines.map((l) => `
+    <tr>
+      <td>${hour(l.createdAt)}</td>
+      <td>${l.ceco}</td>
+      <td>${l.ref}</td>
+      <td>${l.serial || l.lote || "-"}</td>
+      <td>${l.cantidad}</td>
+      <td><button class="mini danger" data-action="delete" data-id="${l.id}" type="button">Borrar</button></td>
+    </tr>
+  `).join("");
 }
 
 async function setEnabledForOperation(enabled) {
@@ -157,408 +101,192 @@ async function setEnabledForOperation(enabled) {
   el.btnStart.disabled = enabled;
   el.cecoInput.disabled = enabled;
   el.operarioInput.disabled = enabled;
-  await updateResetAvailability();
+  el.btnResetSession.disabled = !enabled;
 }
 
 async function startSession() {
   const ceco = norm(el.cecoInput.value);
   const operario = norm(el.operarioInput.value);
-  if (!ceco || !operario) {
-    setMsg("CECO y operario son obligatorios.", "err");
-    return;
-  }
+  if (!ceco || !operario) return setMsg("CECO y operario son obligatorios.", "err");
 
-  currentSession = {
-    id: uuid(),
-    ceco,
-    operario,
-    startedAt: Date.now(),
-    endedAt: null,
-    status: "open",
-    dayKey: dayKey(),
-  };
-
+  currentSession = { id: uuid(), ceco, operario, startedAt: Date.now(), endedAt: null, status: "open", dayKey: dayKey() };
   await putIssueSession(db, currentSession);
   await setEnabledForOperation(true);
-  lastAction = null;
   await refreshSessionLines();
-  el.sessionInfo.textContent = `Salida activa · CECO ${ceco} · Operario ${operario}`;
-  setMsg("Salida iniciada. Puede escanear artículos.", "ok");
+  el.sessionInfo.textContent = `Solicitud activa · CECO ${ceco} · Operario ${operario}`;
+  setMsg("Solicitud iniciada.", "ok");
   el.scanInput.focus();
 }
 
-async function finishSession() {
+async function finishRequest() {
   if (!currentSession) return;
+  if (!sessionLines.length) {
+    setMsg("No hay líneas para cerrar la solicitud.", "err");
+    return;
+  }
+
+  const fecha = dayKey();
+  const requestRef = `${fecha}-${currentSession.ceco}-${currentSession.operario}`;
+  for (const line of sessionLines) {
+    await putIssueRequest(db, {
+      id: uuid(),
+      dayKey: fecha,
+      requestRef,
+      sessionId: currentSession.id,
+      ceco: currentSession.ceco,
+      operario: currentSession.operario,
+      ref: line.ref,
+      lote: line.lote || null,
+      sublote: line.serial || line.sublote || null,
+      cantidad: line.cantidad,
+      createdAt: line.createdAt,
+    });
+  }
+
   currentSession.endedAt = Date.now();
   currentSession.status = "closed";
   await putIssueSession(db, currentSession);
-  setMsg(`Salida finalizada (${currentSession.ceco}).`, "ok");
+
   currentSession = null;
   lastAction = null;
   await setEnabledForOperation(false);
-  el.sessionInfo.textContent = "No hay salida activa.";
+  el.sessionInfo.textContent = "No hay solicitud activa.";
   el.lastRead.textContent = "—";
   await refreshSessionLines();
+  setMsg(`Fin de solicitud registrado (${requestRef}).`, "ok");
 }
 
 async function addLineFromData(data, qty = 1) {
-  if (!currentSession) {
-    setMsg("Primero inicia una salida (CECO + Operario).", "err");
-    return;
-  }
-
+  if (!currentSession) return setMsg("Primero inicia una solicitud.", "err");
   const ref = norm(data.ref);
   const lote = norm(data.lote) || null;
-  const serial = norm(data.serial || data.sublote) || null;
-  const caducidad = norm(data.caducidad) || null;
-  const hasSublote = Boolean(serial);
+  const sublote = norm(data.serial || data.sublote) || null;
   const now = Date.now();
+  if (!ref) return setMsg("Referencia vacía.", "err");
 
-  if (!ref) {
-    setMsg("Referencia vacía.", "err");
-    return;
-  }
-
-  if (hasSublote) {
-    const serialKey = buildSerialKey(ref, lote, serial);
-    const duplicated = sessionLines.find((line) => buildSerialKey(line.ref, line.lote, line.serial || line.sublote) === serialKey);
-    if (duplicated) {
-      setMsg(`DUPLICADO rechazado: ${ref} / ${lote ?? "-"} / ${serial}`, "err");
-      return;
-    }
-
-    const line = {
-      id: uuid(),
-      sessionId: currentSession.id,
-      ceco: currentSession.ceco,
-      ref,
-      lote,
-      sublote: serial,
-      serial,
-      caducidad,
-      cantidad: 1,
-      createdAt: now,
-      dayKey: currentSession.dayKey,
-      exportedAt: null,
-      isSerial: true,
-      aggKey: null,
-    };
-
+  if (sublote) {
+    const dup = sessionLines.find((l) => norm(l.ref).toUpperCase() === ref.toUpperCase() && norm(l.lote).toUpperCase() === norm(lote).toUpperCase() && norm(l.serial || l.sublote).toUpperCase() === sublote.toUpperCase());
+    if (dup) return setMsg(`DUPLICADO rechazado: ${ref}/${lote ?? "-"}/${sublote}`, "err");
+    const line = { id: uuid(), sessionId: currentSession.id, ceco: currentSession.ceco, ref, lote, sublote, serial: sublote, cantidad: 1, createdAt: now, dayKey: currentSession.dayKey, isSerial: true, aggKey: null };
     await putIssueLine(db, line);
     lastAction = { type: "insert", lineId: line.id };
-    el.lastRead.textContent = `${ref} [${serial}]`;
-    setMsg(`OK: ${ref} / ${lote ?? "-"} / ${serial} (1 ud).`, "ok");
+    el.lastRead.textContent = `${ref} [${sublote}]`;
     await refreshSessionLines();
     return;
   }
 
-  const aggKey = buildAggKey(currentSession.id, currentSession.ceco, ref, lote, caducidad);
+  const aggKey = buildAggKey(currentSession.id, currentSession.ceco, ref, lote, null);
   const existing = await findIssueLineBySessionAggKey(db, currentSession.id, aggKey);
-  const candidate = (existing || []).find((line) => !line.isSerial);
-  if (candidate) {
-    const prevQty = Number(candidate.cantidad || 0);
-    candidate.cantidad = prevQty + qty;
-    candidate.createdAt = now;
-    await putIssueLine(db, candidate);
-    lastAction = { type: "merge", lineId: candidate.id, prevQty };
-    el.lastRead.textContent = `${ref} (+${qty})`;
-    setMsg(`OK (agregado): ${ref} / ${lote ?? "-"} → ${candidate.cantidad}.`, "ok");
-    await refreshSessionLines();
-    return;
+  const row = (existing || []).find((x) => !x.isSerial);
+  if (row) {
+    const prevQty = Number(row.cantidad || 0);
+    row.cantidad = prevQty + qty;
+    row.createdAt = now;
+    await putIssueLine(db, row);
+    lastAction = { type: "merge", lineId: row.id, prevQty };
+  } else {
+    const line = { id: uuid(), sessionId: currentSession.id, ceco: currentSession.ceco, ref, lote, sublote: null, serial: null, cantidad: qty, createdAt: now, dayKey: currentSession.dayKey, isSerial: false, aggKey };
+    await putIssueLine(db, line);
+    lastAction = { type: "insert", lineId: line.id };
   }
-
-  const line = {
-    id: uuid(),
-    sessionId: currentSession.id,
-    ceco: currentSession.ceco,
-    ref,
-    lote,
-    sublote: null,
-    serial: null,
-    caducidad,
-    cantidad: qty,
-    createdAt: now,
-    dayKey: currentSession.dayKey,
-    exportedAt: null,
-    isSerial: false,
-    aggKey,
-  };
-  await putIssueLine(db, line);
-  lastAction = { type: "insert", lineId: line.id };
   el.lastRead.textContent = ref;
-  setMsg(`OK: ${ref} / ${lote ?? "-"} (${qty}).`, "ok");
   await refreshSessionLines();
 }
 
 async function handleScan(rawInput) {
-  let raw = normalizeScannerRaw(rawInput);
-  raw = stripDemoPrefix(raw);
-  raw = norm(raw);
+  let raw = norm(stripDemoPrefix(normalizeScannerRaw(rawInput)));
   if (!raw) return;
-
-  const cmd = parseCommand(raw);
-  if (cmd?.cmd === "FIN") return finishSession();
-  if (cmd?.cmd === "DAY_CLOSE") return closeDayAndExport();
-
-  const parsed = parseGs1(raw);
-  if (parsed?.ref) {
-    await addLineFromData(parsed, 1);
-  } else {
-    await addLineFromData({ ref: raw }, 1);
-  }
+  const gs1 = parseGs1(raw);
+  return gs1?.ref ? addLineFromData(gs1, 1) : addLineFromData({ ref: raw }, 1);
 }
 
 async function undoLast() {
-  if (!lastAction) {
-    setMsg("No hay acción para deshacer.", "err");
-    return;
-  }
-
+  if (!lastAction) return setMsg("No hay acción para deshacer.", "err");
   const line = sessionLines.find((x) => x.id === lastAction.lineId);
-  if (!line) {
-    setMsg("No se encontró la última línea.", "err");
-    return;
-  }
-
-  if (lastAction.type === "insert") {
-    await deleteIssueLine(db, line.id);
-  } else if (lastAction.type === "merge") {
-    line.cantidad = lastAction.prevQty;
-    await putIssueLine(db, line);
-  }
-
+  if (!line) return;
+  if (lastAction.type === "insert") await deleteIssueLine(db, line.id);
+  else { line.cantidad = lastAction.prevQty; await putIssueLine(db, line); }
   lastAction = null;
-  setMsg("Última acción deshecha.", "ok");
   await refreshSessionLines();
 }
 
 async function deleteRowById(id) {
   const line = sessionLines.find((x) => x.id === id);
   if (!line) return;
-  const ok = window.confirm(`Eliminar registro ${line.ref} / ${line.lote ?? "-"} / ${line.serial ?? "-"}?`);
-  if (!ok) return;
+  if (!window.confirm(`Eliminar registro ${line.ref} / ${line.lote ?? "-"} / ${line.serial ?? "-"}?`)) return;
   await deleteIssueLine(db, line.id);
-  if (lastAction?.lineId === line.id) lastAction = null;
-  setMsg("Registro eliminado.", "warn");
   await refreshSessionLines();
-}
-
-function exportCsv(rows, filename) {
-  const csv = rows.map((row) => row.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(";")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-async function closeDayAndExport() {
-  const today = dayKey();
-  const lines = (await getIssueLinesByDay(db, today)).sort((a, b) => a.createdAt - b.createdAt);
-  if (!lines.length) {
-    setMsg("No hay salidas del día para exportar.", "err");
-    return;
-  }
-
-  const rows = [
-    ["FECHA", "HORA", "CECO", "OPERARIO", "REFERENCIA", "LOTE", "SERIE", "CANTIDAD"],
-  ];
-  const sessions = await getIssueSessionsByDay(db, today);
-  const opBySession = new Map(sessions.map((s) => [s.id, s.operario]));
-
-  for (const l of lines) {
-    rows.push([
-      l.dayKey,
-      hour(l.createdAt),
-      l.ceco,
-      opBySession.get(l.sessionId) || "",
-      l.ref,
-      l.lote || "",
-      l.serial || "",
-      l.cantidad,
-    ]);
-  }
-
-  const byCecoThenHour = rows.slice(1).sort((a, b) => `${a[2]}_${a[1]}`.localeCompare(`${b[2]}_${b[1]}`));
-
-  if (window.XLSX) {
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([rows[0], ...byCecoThenHour]);
-    XLSX.utils.book_append_sheet(wb, ws, "Salidas");
-    XLSX.writeFile(wb, `salidas_${today}.xlsx`);
-  } else {
-    exportCsv([rows[0], ...byCecoThenHour], `salidas_${today}.csv`);
-  }
-
-  const exportTs = Date.now();
-  for (const l of lines) {
-    l.exportedAt = exportTs;
-    await putIssueLine(db, l);
-  }
-  for (const s of sessions) {
-    s.status = "exported";
-    if (!s.endedAt) s.endedAt = exportTs;
-    await putIssueSession(db, s);
-  }
-
-  await updateResetAvailability();
-  setMsg(`Cierre de día completado (${lines.length} líneas).`, "ok");
 }
 
 async function resetCurrentSession() {
-  if (!currentSession) {
-    setMsg("No hay salida activa para borrar.", "err");
-    return;
-  }
-
-  if (await wasDayAlreadyExported()) {
-    setMsg("No se permite reset: el día ya fue exportado/cerrado.", "err");
-    return;
-  }
-
-  const ok = window.confirm("Se borrará todo el registro, continuar?");
-  if (!ok) return;
-
-  const lines = await getIssueLinesBySession(db, currentSession.id);
-  for (const line of lines) {
-    await deleteIssueLine(db, line.id);
-  }
+  if (!currentSession) return setMsg("No hay solicitud activa para borrar.", "err");
+  const reqsToday = await getIssueRequestsByDay(db, dayKey());
+  if (reqsToday.length > 0) return setMsg("No se permite reset: ya hay solicitudes cerradas pendientes de FIN DE DIA.", "err");
+  if (!window.confirm("Se borrará todo el registro, continuar?")) return;
+  for (const line of await getIssueLinesBySession(db, currentSession.id)) await deleteIssueLine(db, line.id);
   await deleteIssueSession(db, currentSession.id);
-
   currentSession = null;
-  lastAction = null;
   await setEnabledForOperation(false);
-  el.sessionInfo.textContent = "No hay salida activa.";
-  el.lastRead.textContent = "—";
-  setMsg("Salida actual borrada por completo.", "warn");
+  el.sessionInfo.textContent = "No hay solicitud activa.";
   await refreshSessionLines();
+  setMsg("Solicitud borrada.", "warn");
 }
 
 function hookScannerInput() {
   let buffer = "";
   let timer = null;
-
-  function shouldIgnoreScannerCapture(evtTarget) {
+  function ignore(target) {
     if (el.manualDialog?.open || el.manualCodeDialog?.open) return true;
-
-    const active = evtTarget || document.activeElement;
+    const active = target || document.activeElement;
     if (!active) return false;
-
     if (active === el.scanInput) return false;
-
-    const ownerDialog = active.closest?.("dialog");
-    if (ownerDialog?.open) return true;
-
-    if (active.isContentEditable) return true;
-
     const tag = active.tagName?.toUpperCase?.() || "";
-    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    return active.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   }
-
-  function scheduleFlush() {
+  function schedule() {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (buffer.trim()) flush();
-    }, 90);
+    timer = setTimeout(() => { if (buffer.trim()) flush(); }, 90);
   }
-
   function flush() {
     const value = buffer.trim();
     buffer = "";
-    if (el.scanInput) el.scanInput.value = "";
+    el.scanInput.value = "";
     clearTimeout(timer);
     timer = null;
-
     if (!value) return;
-
     handleScan(value).catch((e) => setMsg(e.message, "err"));
   }
-
   document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-    if (shouldIgnoreScannerCapture(e.target)) return;
-
-    if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      flush();
-      return;
-    }
-
-    if (e.key === "Backspace") {
-      buffer = buffer.slice(0, -1);
-      scheduleFlush();
-      return;
-    }
-
-    if (e.key.length === 1) {
-      buffer += e.key;
-      scheduleFlush();
-    }
+    if (e.ctrlKey || e.altKey || e.metaKey || ignore(e.target)) return;
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); return flush(); }
+    if (e.key === "Backspace") { buffer = buffer.slice(0, -1); return schedule(); }
+    if (e.key.length === 1) { buffer += e.key; schedule(); }
   });
-
-  safeOn(el.scanInput, "input", () => {
-    if (shouldIgnoreScannerCapture(el.scanInput)) return;
-    const v = el.scanInput?.value ?? "";
-    if (!v) return;
-    buffer = v;
-    scheduleFlush();
-  });
-
-  safeOn(el.scanInput, "paste", () => {
-    if (shouldIgnoreScannerCapture(el.scanInput)) return;
-    const v = el.scanInput?.value ?? "";
-    if (!v) return;
-    buffer = v;
-    scheduleFlush();
-  });
+  safeOn(el.scanInput, "input", () => { if (!ignore(el.scanInput) && el.scanInput.value) { buffer = el.scanInput.value; schedule(); } });
+  safeOn(el.scanInput, "paste", () => { if (!ignore(el.scanInput) && el.scanInput.value) { buffer = el.scanInput.value; schedule(); } });
 }
 
 function bindEvents() {
   safeOn(el.btnStart, "click", () => startSession().catch((e) => setMsg(e.message, "err")));
-  safeOn(el.btnFinish, "click", () => finishSession().catch((e) => setMsg(e.message, "err")));
+  safeOn(el.btnFinish, "click", () => finishRequest().catch((e) => setMsg(e.message, "err")));
   safeOn(el.btnUndo, "click", () => undoLast().catch((e) => setMsg(e.message, "err")));
-  safeOn(el.btnDayClose, "click", () => closeDayAndExport().catch((e) => setMsg(e.message, "err")));
   safeOn(el.btnResetSession, "click", () => resetCurrentSession().catch((e) => setMsg(e.message, "err")));
 
   safeOn(el.btnManual, "click", () => {
-    el.manualRef.value = "";
-    el.manualLote.value = "";
-    el.manualSublote.value = "";
-    el.manualQty.value = "1";
+    el.manualRef.value = ""; el.manualLote.value = ""; el.manualSublote.value = ""; el.manualQty.value = "1";
     el.manualDialog.showModal();
-    setTimeout(() => el.manualRef.focus(), 30);
   });
-
-  safeOn(el.btnManualCode, "click", () => {
-    el.manualCodeInput.value = "";
-    el.manualCodeDialog.showModal();
-    setTimeout(() => el.manualCodeInput.focus(), 30);
-  });
-
+  safeOn(el.btnManualCode, "click", () => { el.manualCodeInput.value = ""; el.manualCodeDialog.showModal(); });
   safeOn(el.btnManualCancel, "click", () => el.manualDialog.close());
   safeOn(el.btnManualCodeCancel, "click", () => el.manualCodeDialog.close());
 
   safeOn(el.manualForm, "submit", (evt) => {
     evt.preventDefault();
     const ref = norm(el.manualRef.value);
-    if (!ref) {
-      setMsg("La referencia es obligatoria.", "err");
-      return;
-    }
-
-    const sublote = norm(el.manualSublote.value) || null;
-    const qtyRaw = Math.max(1, Number(el.manualQty.value || 1));
-    const qty = sublote ? 1 : qtyRaw;
-
-    addLineFromData({
-      ref,
-      lote: norm(el.manualLote.value) || null,
-      sublote,
-    }, qty)
+    if (!ref) return setMsg("La referencia es obligatoria.", "err");
+    const sub = norm(el.manualSublote.value) || null;
+    const qty = sub ? 1 : Math.max(1, Number(el.manualQty.value || 1));
+    addLineFromData({ ref, lote: norm(el.manualLote.value) || null, sublote: sub }, qty)
       .then(() => el.manualDialog.close())
       .catch((e) => setMsg(e.message, "err"));
   });
@@ -566,19 +294,13 @@ function bindEvents() {
   safeOn(el.manualCodeForm, "submit", (evt) => {
     evt.preventDefault();
     const raw = norm(el.manualCodeInput.value);
-    if (!raw) {
-      setMsg("Debe indicar un código manual.", "err");
-      return;
-    }
-    handleScan(raw)
-      .then(() => el.manualCodeDialog.close())
-      .catch((e) => setMsg(e.message, "err"));
+    if (!raw) return setMsg("Debe indicar un código manual.", "err");
+    handleScan(raw).then(() => el.manualCodeDialog.close()).catch((e) => setMsg(e.message, "err"));
   });
 
   safeOn(el.tbody, "click", (evt) => {
     const btn = evt.target.closest("button[data-action='delete']");
-    if (!btn) return;
-    deleteRowById(btn.dataset.id).catch((e) => setMsg(e.message, "err"));
+    if (btn) deleteRowById(btn.dataset.id).catch((e) => setMsg(e.message, "err"));
   });
 }
 

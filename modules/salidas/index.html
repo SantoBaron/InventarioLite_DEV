@@ -14,7 +14,7 @@
     </header>
 
     <section class="card">
-      <h2>Inicio de operación</h2>
+      <h2>Inicio de solicitud</h2>
       <div class="grid2">
         <label>CECO
           <input id="cecoInput" autocomplete="off" placeholder="Ej. COCINA-01" />
@@ -24,12 +24,12 @@
         </label>
       </div>
       <div class="actions">
-        <button id="btnStart">Iniciar salida</button>
-        <button id="btnFinish" class="secondary" disabled>Finalizar salida</button>
-        <button id="btnDayClose" class="secondary">Cierre de día y exportar</button>
-        <button id="btnResetSession" class="danger" disabled>Reset salida actual</button>
+        <button id="btnStart">Iniciar solicitud</button>
+        <button id="btnFinish" class="secondary" disabled>Fin de solicitud</button>
+        <a href="../endofday/index.html" class="back">Ir a End of Day</a>
+        <button id="btnResetSession" class="danger" disabled>Reset solicitud actual</button>
       </div>
-      <p id="sessionInfo" class="muted">No hay salida activa.</p>
+      <p id="sessionInfo" class="muted">No hay solicitud activa.</p>
     </section>
 
     <section class="card">
@@ -50,7 +50,7 @@
     </section>
 
     <section class="card">
-      <h2>Líneas de la salida activa</h2>
+      <h2>Líneas de la solicitud activa</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -71,7 +71,7 @@
 
   <dialog id="manualDialog">
     <form id="manualForm" method="dialog" class="manual-form">
-      <h3>Alta manual (salida)</h3>
+      <h3>Alta manual (solicitud)</h3>
       <label>Referencia
         <input id="manualRef" required autocomplete="off" />
       </label>
@@ -104,7 +104,6 @@
     </form>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
