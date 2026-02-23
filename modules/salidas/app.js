@@ -150,6 +150,8 @@ async function finishRequest() {
   currentSession = null;
   lastAction = null;
   await setEnabledForOperation(false);
+  el.cecoInput.value = "";
+  el.operarioInput.value = "";
   el.sessionInfo.textContent = "No hay solicitud activa.";
   el.lastRead.textContent = "—";
   await refreshSessionLines();
