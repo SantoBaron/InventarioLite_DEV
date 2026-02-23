@@ -1,0 +1,11 @@
+:root { --bg:#f3f6fb; --card:#fff; --text:#152238; --muted:#5f6d83; --primary:#0b5ed7; --secondary:#d9e2f2; --danger:#b42318; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:12px;display:grid;gap:10px}
+.top{display:flex;justify-content:space-between;align-items:center}
+.card{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(15,30,55,.08)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button,.back{border:0;border-radius:10px;min-height:44px;padding:10px 14px;font-size:15px;font-weight:700;text-decoration:none;cursor:pointer}
+button{background:var(--primary);color:#fff} button.secondary,.back{background:var(--secondary);color:#1d2f4d} button.danger{background:var(--danger);color:#fff}
+.msg{min-height:24px;font-weight:600}.msg.ok{color:#117a36}.msg.err{color:var(--danger)}.msg.warn{color:#b27200}.muted{color:var(--muted)}
+.table-wrap{overflow:auto} table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #e5ebf5;padding:8px;text-align:left}

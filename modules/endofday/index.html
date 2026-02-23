@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>End of Day | AGQ Lite</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>End of Day</h1>
+      <a class="back" href="../../index.html">← Home</a>
+    </header>
+
+    <section class="card">
+      <p class="muted">Consolida solicitudes cerradas por <b>CECO</b>, <b>Operario</b> y <b>Hora</b>. Genera referencia única <b>FECHA-CECO-OPERARIO</b>.</p>
+      <div class="actions">
+        <button id="btnRefresh" class="secondary">Recargar</button>
+        <button id="btnExport">Exportar XLSX/CSV</button>
+        <button id="btnFinishDay" class="danger">FIN DE DIA (limpiar)</button>
+      </div>
+      <div id="msg" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Solicitudes consolidadas del día</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Referencia solicitud</th>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>CECO</th>
+              <th>Operario</th>
+              <th>Referencia</th>
+              <th>Lote</th>
+              <th>Sublote</th>
+              <th>Cantidad</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
