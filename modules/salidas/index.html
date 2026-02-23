@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Salidas | AGQ Lite</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>Salidas (Stock Out)</h1>
+      <a class="back" href="../../index.html">← Home</a>
+    </header>
+
+    <section class="card">
+      <h2>Inicio de solicitud</h2>
+      <div class="grid2">
+        <label>CECO
+          <input id="cecoInput" autocomplete="off" placeholder="Ej. COCINA-01" />
+        </label>
+        <label>Operario
+          <input id="operarioInput" autocomplete="off" placeholder="Nombre operario" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="btnStart">Iniciar solicitud</button>
+        <button id="btnFinish" class="secondary" disabled>Fin de solicitud</button>
+        <a href="../endofday/index.html" class="back">Ir a End of Day</a>
+        <button id="btnResetSession" class="danger" disabled>Reset solicitud actual</button>
+      </div>
+      <p id="sessionInfo" class="muted">No hay solicitud activa.</p>
+    </section>
+
+    <section class="card">
+      <h2>Lectura de artículos</h2>
+      <input id="scanInput" class="scan" autocomplete="off" placeholder="Escanear GS1 o escribir referencia + Enter" disabled />
+      <div class="actions compact">
+        <button id="btnManual" class="secondary" disabled>Alta manual</button>
+        <button id="btnManualCode" class="secondary" disabled>Código manual</button>
+        <button id="btnUndo" class="secondary" disabled>Deshacer última</button>
+      </div>
+      <div id="msg" class="msg"></div>
+
+      <div class="stats">
+        <div><span>Líneas:</span> <b id="linesCount">0</b></div>
+        <div><span>Unidades:</span> <b id="unitsCount">0</b></div>
+        <div><span>Última lectura:</span> <b id="lastRead">—</b></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Líneas de la solicitud activa</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>CECO</th>
+              <th>Referencia</th>
+              <th>Lote/Serie</th>
+              <th>Cantidad</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="manualDialog">
+    <form id="manualForm" method="dialog" class="manual-form">
+      <h3>Alta manual (solicitud)</h3>
+      <label>Referencia
+        <input id="manualRef" required autocomplete="off" />
+      </label>
+      <label>Lote
+        <input id="manualLote" autocomplete="off" />
+      </label>
+      <label>Serie / Sublote (opcional)
+        <input id="manualSublote" autocomplete="off" />
+      </label>
+      <label>Cantidad
+        <input id="manualQty" type="number" min="1" step="1" value="1" />
+      </label>
+      <menu>
+        <button id="btnManualCancel" type="button" class="secondary">Cancelar</button>
+        <button type="submit">Guardar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="manualCodeDialog">
+    <form id="manualCodeForm" method="dialog" class="manual-form">
+      <h3>Entrada manual de código</h3>
+      <label>Código GS1 / Referencia
+        <input id="manualCodeInput" autocomplete="off" placeholder="Ej: 02REFÊ10LOTEÊ04SUBÊ21" required />
+      </label>
+      <menu>
+        <button id="btnManualCodeCancel" type="button" class="secondary">Cancelar</button>
+        <button type="submit">Procesar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
