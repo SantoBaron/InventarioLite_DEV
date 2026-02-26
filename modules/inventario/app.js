@@ -168,7 +168,7 @@ function nextItemLisNum(invNum) {
   return max + 1000;
 }
 
-function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
+function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1, manual = false }) {
   if (!sageData?.baseS?.length) return null;
 
   const stoFcy = sageData.stoFcy || "";
@@ -197,6 +197,45 @@ function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
     return "match";
   }
 
+  // En altas manuales, si SAGE usa LOC y no hubo match exacto,
+  // intentamos casar por artículo/lote/sublote (sin LOC) solo cuando es inequívoco.
+  if (manual && sageData.sageUsesLoc) {
+    const fallbackMatches = sageData.baseS.filter((row) => {
+      const rowStoFcy = String(row[4] || "").trim().toUpperCase();
+      const rowRef = String(row[8] || "").trim().toUpperCase();
+      const rowLot = String(row[9] || "").trim().toUpperCase();
+      const rowSlo = String(row[10] || "").trim().toUpperCase();
+      const rowSta = String(row[13] || "").trim().toUpperCase();
+      const rowPcu = String(row[14] || "").trim().toUpperCase();
+      return rowStoFcy === String(stoFcy || "").trim().toUpperCase()
+        && rowRef === String(ref || "").trim().toUpperCase()
+        && rowLot === String(lote || "").trim().toUpperCase()
+        && rowSlo === String(sublote || "").trim().toUpperCase()
+        && rowSta === String(baseStaPcu.sta || "").trim().toUpperCase()
+        && rowPcu === String(baseStaPcu.pcu || "").trim().toUpperCase();
+    });
+
+    if (fallbackMatches.length === 1) {
+      const row = fallbackMatches[0];
+      const rowKey = buildSageKey({
+        stoFcy: row[4],
+        itMref: row[8],
+        lot: row[9],
+        slo: row[10],
+        loc: row[12],
+        sta: row[13],
+        pcu: row[14],
+        sageUsesLoc: sageData.sageUsesLoc,
+      });
+      const currentQty = Number.parseFloat(row[5] || "0") || 0;
+      row[5] = String(currentQty + cantidad);
+      row[7] = "1";
+      sageData.touched.add(rowKey);
+      setMsg(`Match SAGE por artículo/lote (LOC base: ${row[12] || "-"}).`, "warn");
+      return "match";
+    }
+  }
+
   const existingNew = sageData.newLines.get(key);
   if (existingNew) {
     existingNew.qty += cantidad;
@@ -214,6 +253,7 @@ function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
   updateSageStatusPanel();
   return "new";
 }
+
 
 async function loadSageBaseFile(file) {
   if (!file) return;
@@ -502,7 +542,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
       manual,
       createdAt: Date.now(),
     };
-    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
     if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
@@ -516,7 +556,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     line.cantidad += cantidad;
     line.createdAt = Date.now();
     line.manual = Boolean(line.manual || manual);
-    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
     if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
@@ -536,7 +576,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     manual,
     createdAt: Date.now(),
   };
-  const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+  const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
   if (sageStatus) line.sageStatus = sageStatus;
   await putLine(db, line);
   updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
