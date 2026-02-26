@@ -19,6 +19,9 @@
         <button id="btnUndo" class="secondary" title="Deshacer último registro">Undo</button>
         <button id="btnExport" class="secondary">Exportar Excel</button>
         <button id="btnExportCsv" class="secondary">Exportar CSV</button>
+        <button id="btnLoadSage" class="secondary">Cargar base SAGE</button>
+        <button id="btnAllowZero" class="secondary">Aplicar permitir 0</button>
+        <button id="btnExportSage" class="secondary">Exportar CSV SAGE</button>
         <button id="btnReset" class="danger">Reset</button>
       </div>
     </header>
@@ -57,10 +60,26 @@
             <button id="btnMenuUndo" class="secondary" type="button">Undo</button>
             <button id="btnMenuExport" class="secondary" type="button">Exportar Excel</button>
             <button id="btnMenuExportCsv" class="secondary" type="button">Exportar CSV</button>
+            <button id="btnMenuLoadSage" class="secondary" type="button">Cargar base SAGE</button>
+            <button id="btnMenuAllowZero" class="secondary" type="button">Aplicar permitir 0</button>
+            <button id="btnMenuExportSage" class="secondary" type="button">Exportar CSV SAGE</button>
             <button id="btnMenuReset" class="danger" type="button">Reset</button>
           </div>
         </details>
       </div>
+
+
+      <div class="card sage-status-card">
+        <div class="label">Modo SAGE X3</div>
+        <div class="row">
+          <div><div class="label">SESNUM</div><div id="sageSesNum" class="mono">—</div></div>
+          <div><div class="label">Listas INVNUM</div><div id="sageInvNums" class="mono">0</div></div>
+          <div><div class="label">Líneas S base</div><div id="sageBaseLines" class="mono">0</div></div>
+          <div><div class="label">Líneas S nuevas</div><div id="sageNewLines" class="mono">0</div></div>
+        </div>
+      </div>
+
+      <input id="sageBaseInput" type="file" accept=".csv,text/csv" hidden />
 
       <input id="scanInput" class="scan-input" autocomplete="off" autofocus />
 

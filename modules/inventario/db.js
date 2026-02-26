@@ -1,9 +1,10 @@
 const DB_NAME = "mini_inventario_db";
-const DB_VER = 3;
+const DB_VER = 4;
 const STORE = "lines";
 const ISSUE_SESSIONS_STORE = "issue_sessions";
 const ISSUE_LINES_STORE = "issue_lines";
 const ISSUE_REQUESTS_STORE = "issue_requests";
+const INVENTORY_META_STORE = "inventory_meta";
 
 export function openDb() {
   return new Promise((resolve, reject) => {
@@ -39,6 +40,11 @@ export function openDb() {
         reqs.createIndex("by_ref", "requestRef", { unique: false });
         reqs.createIndex("by_createdAt", "createdAt", { unique: false });
       }
+
+      if (!db.objectStoreNames.contains(INVENTORY_META_STORE)) {
+        const meta = db.createObjectStore(INVENTORY_META_STORE, { keyPath: "id" });
+        meta.createIndex("by_updatedAt", "updatedAt", { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -56,6 +62,10 @@ function txIssueLines(db, mode = "readonly") {
 }
 function txIssueRequests(db, mode = "readonly") {
   return db.transaction(ISSUE_REQUESTS_STORE, mode).objectStore(ISSUE_REQUESTS_STORE);
+}
+
+function txInventoryMeta(db, mode = "readonly") {
+  return db.transaction(INVENTORY_META_STORE, mode).objectStore(INVENTORY_META_STORE);
 }
 
 export async function getAllLines(db) {
@@ -184,4 +194,29 @@ export async function clearIssueRequestsByDay(db, dayKey) {
     });
   }
   return true;
+}
+
+
+export async function getInventoryMeta(db, id) {
+  return new Promise((resolve, reject) => {
+    const req = txInventoryMeta(db, "readonly").get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putInventoryMeta(db, row) {
+  return new Promise((resolve, reject) => {
+    const req = txInventoryMeta(db, "readwrite").put(row);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function deleteInventoryMeta(db, id) {
+  return new Promise((resolve, reject) => {
+    const req = txInventoryMeta(db, "readwrite").delete(id);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
 }
