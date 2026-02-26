@@ -545,6 +545,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
     if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
+    updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
     lastInsertedId = line.id;
     setMsg(`OK: ${ref} (lote ${lote ?? "-"}) (sublote ${sublote})${manual ? " [manual]" : ""}`, "ok");
     return line;
@@ -558,6 +559,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
     if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
+    updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
     lastInsertedId = line.id;
     setMsg(`OK (agregado): ${ref} (lote ${lote ?? "-"}) → cantidad ${line.cantidad}${manual ? " [manual]" : ""}`, "ok");
     return line;
@@ -577,6 +579,7 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
   const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
   if (sageStatus) line.sageStatus = sageStatus;
   await putLine(db, line);
+  updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
   lastInsertedId = line.id;
   setMsg(`OK: ${ref} (lote ${lote ?? "-"})${manual ? " [manual]" : ""}`, "ok");
   return line;
