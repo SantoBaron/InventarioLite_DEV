@@ -113,6 +113,22 @@ table { width: 100%; border-collapse: collapse; }
 thead th { text-align: left; font-size: 12px; color: #9aa7c3; background: #0d1320; padding: 10px; border-bottom: 1px solid #22304d; }
 tbody td { padding: 10px; border-bottom: 1px solid #1e2a44; }
 tbody tr:hover td { background: #111a2d; }
+
+tbody tr.sage-match td {
+  background: rgba(74, 222, 128, 0.14);
+}
+
+tbody tr.sage-new td {
+  background: rgba(251, 146, 60, 0.18);
+}
+
+body.pda-mode tbody tr.sage-match td {
+  background: rgba(22, 163, 74, 0.22);
+}
+
+body.pda-mode tbody tr.sage-new td {
+  background: rgba(234, 88, 12, 0.22);
+}
 .manual-row td {
   text-decoration: underline;
   text-decoration-style: dashed;

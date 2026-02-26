@@ -169,7 +169,7 @@ function nextItemLisNum(invNum) {
 }
 
 function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
-  if (!sageData?.baseS?.length) return;
+  if (!sageData?.baseS?.length) return null;
 
   const stoFcy = sageData.stoFcy || "";
   const baseStaPcu = sageData.sampleLine
@@ -194,13 +194,13 @@ function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
     row[5] = String(currentQty + cantidad);
     row[7] = "1";
     sageData.touched.add(key);
-    return;
+    return "match";
   }
 
   const existingNew = sageData.newLines.get(key);
   if (existingNew) {
     existingNew.qty += cantidad;
-    return;
+    return "new";
   }
 
   sageData.newLines.set(key, {
@@ -212,6 +212,7 @@ function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
     qty: cantidad,
   });
   updateSageStatusPanel();
+  return "new";
 }
 
 async function loadSageBaseFile(file) {
@@ -337,6 +338,8 @@ function renderTable(lines) {
 
   for (const l of lines) {
     const tr = document.createElement("tr");
+    if (l.sageStatus === "match") tr.classList.add("sage-match");
+    if (l.sageStatus === "new") tr.classList.add("sage-new");
     if (l.manual) {
       tr.classList.add("manual-row");
       tr.title = "Registro introducido manualmente";
@@ -499,6 +502,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
       manual,
       createdAt: Date.now(),
     };
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
     lastInsertedId = line.id;
@@ -511,6 +516,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     line.cantidad += cantidad;
     line.createdAt = Date.now();
     line.manual = Boolean(line.manual || manual);
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
     lastInsertedId = line.id;
@@ -529,6 +536,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     manual,
     createdAt: Date.now(),
   };
+  const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+  if (sageStatus) line.sageStatus = sageStatus;
   await putLine(db, line);
   updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
   lastInsertedId = line.id;
