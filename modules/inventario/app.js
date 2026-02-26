@@ -1,7 +1,17 @@
 // app.js
-import { openDb, getAllLines, putLine, deleteLine, clearAll, findByKey } from "./db.js";
+import {
+  openDb,
+  getAllLines,
+  putLine,
+  deleteLine,
+  clearAll,
+  findByKey,
+  getInventoryMeta,
+  putInventoryMeta,
+} from "./db.js";
 import { parseGs1 } from "./gs1.js";
 import { exportToCsv, exportToXlsx } from "./export.js";
+import { parseSageCsv, detectSageMeta, buildSageIndex, buildSageKey, serializeSageCsv } from "./sageCsv.js";
 
 const STATE = {
   WAIT_LOC: "WAIT_LOC",
@@ -44,6 +54,17 @@ const el = {
   btnExport: document.getElementById("btnExport"),
   btnExportCsv: document.getElementById("btnExportCsv"),
   btnReset: document.getElementById("btnReset"),
+  sageBaseInput: document.getElementById("sageBaseInput"),
+  btnLoadSage: document.getElementById("btnLoadSage"),
+  btnAllowZero: document.getElementById("btnAllowZero"),
+  btnExportSage: document.getElementById("btnExportSage"),
+  btnMenuLoadSage: document.getElementById("btnMenuLoadSage"),
+  btnMenuAllowZero: document.getElementById("btnMenuAllowZero"),
+  btnMenuExportSage: document.getElementById("btnMenuExportSage"),
+  sageSesNum: document.getElementById("sageSesNum"),
+  sageInvNums: document.getElementById("sageInvNums"),
+  sageBaseLines: document.getElementById("sageBaseLines"),
+  sageNewLines: document.getElementById("sageNewLines"),
 };
 
 let db;
@@ -54,6 +75,7 @@ let currentLines = [];
 let manualMode = "create"; // create | edit
 let editingLineId = null;
 let pdaMode = false;
+let sageData = null;
 
 function uuid() {
   return crypto.randomUUID
@@ -110,6 +132,202 @@ function makeKey(ubicacion, ref, lote, sublote) {
   return `${u}|${r}|${l}|${sl}`;
 }
 
+
+
+function updateSageStatusPanel() {
+  if (!el.sageSesNum) return;
+  el.sageSesNum.textContent = sageData?.sageSesNum || "—";
+  el.sageInvNums.textContent = String(sageData?.invNums?.size || 0);
+  el.sageBaseLines.textContent = String(sageData?.baseS?.length || 0);
+  el.sageNewLines.textContent = String(sageData?.newLines?.size || 0);
+}
+
+function downloadTextFile(name, content) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function chooseDefaultInvNum() {
+  if (!sageData) return "";
+  const invArray = [...sageData.invNums];
+  if (!invArray.length) return "";
+  return invArray[invArray.length - 1] || invArray[0];
+}
+
+function nextItemLisNum(invNum) {
+  const used = sageData.baseS
+    .filter((row) => (row[2] || "") === invNum)
+    .map((row) => Number.parseInt(row[3] || "0", 10))
+    .filter((n) => Number.isFinite(n));
+  const max = used.length ? Math.max(...used) : 0;
+  return max + 1000;
+}
+
+function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1 }) {
+  if (!sageData?.baseS?.length) return null;
+
+  const stoFcy = sageData.stoFcy || "";
+  const baseStaPcu = sageData.sampleLine
+    ? { sta: sageData.sampleLine[13] || "A", pcu: sageData.sampleLine[14] || "UN" }
+    : { sta: "A", pcu: "UN" };
+
+  const key = buildSageKey({
+    stoFcy,
+    itMref: ref,
+    lot: lote || "",
+    slo: sublote || "",
+    loc: ubicacion || "",
+    sta: baseStaPcu.sta,
+    pcu: baseStaPcu.pcu,
+    sageUsesLoc: sageData.sageUsesLoc,
+  });
+
+  const rows = sageData.index.get(key);
+  if (rows?.length) {
+    const row = rows[0];
+    const currentQty = Number.parseFloat(row[5] || "0") || 0;
+    row[5] = String(currentQty + cantidad);
+    row[7] = "1";
+    sageData.touched.add(key);
+    return "match";
+  }
+
+  const existingNew = sageData.newLines.get(key);
+  if (existingNew) {
+    existingNew.qty += cantidad;
+    return "new";
+  }
+
+  sageData.newLines.set(key, {
+    key,
+    ref,
+    lote: lote || "",
+    sublote: sublote || "",
+    loc: ubicacion || "",
+    qty: cantidad,
+  });
+  updateSageStatusPanel();
+  return "new";
+}
+
+async function loadSageBaseFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  const { baseE, baseL, baseS } = parseSageCsv(text);
+  if (!baseS.length) {
+    setMsg("CSV SAGE inválido: no se encontraron líneas S.", "err");
+    return;
+  }
+
+  const meta = detectSageMeta(baseE, baseL, baseS);
+  const invId = meta.sageSesNum || "SAGE_NO_SESNUM";
+  const existingMeta = await getInventoryMeta(db, invId);
+  if (existingMeta) {
+    const overwrite = window.confirm(`Ya existe una base para ${invId}. Aceptar = sobrescribir, Cancelar = continuar.`);
+    if (!overwrite) {
+      setMsg(`Continuando con base SAGE existente: ${invId}.`, "warn");
+      return;
+    }
+  }
+
+  sageData = {
+    ...meta,
+    baseE,
+    baseL,
+    baseS,
+    index: buildSageIndex(baseS, meta.sageUsesLoc),
+    touched: new Set(),
+    newLines: new Map(),
+    sampleLine: baseS[0] || null,
+    inventoryId: invId,
+  };
+
+  await putInventoryMeta(db, {
+    id: invId,
+    inventoryId: invId,
+    sesNum: meta.sageSesNum,
+    stoFcy: meta.stoFcy,
+    updatedAt: Date.now(),
+  });
+  updateSageStatusPanel();
+  setMsg(`Base SAGE cargada (${meta.sageSesNum || "sin SESNUM"}) con ${baseS.length} líneas S.`, "ok");
+}
+
+function applyAllowZeroToSage() {
+  if (!sageData?.baseS?.length) {
+    setMsg("Primero debes cargar una base SAGE.", "warn");
+    return;
+  }
+  for (const row of sageData.baseS) {
+    const key = buildSageKey({
+      stoFcy: row[4],
+      itMref: row[8],
+      lot: row[9],
+      slo: row[10],
+      loc: row[12],
+      sta: row[13],
+      pcu: row[14],
+      sageUsesLoc: sageData.sageUsesLoc,
+    });
+    if (!sageData.touched.has(key)) {
+      row[5] = "0";
+      row[7] = "2";
+    } else {
+      row[7] = "1";
+    }
+  }
+  setMsg("Aplicado permitir 0: no tocados con QTYPCUNEW=0 y ZERSTOFLG=2.", "ok");
+}
+
+function buildFinalSageLines() {
+  const finalS = [...sageData.baseS];
+  const invNum = chooseDefaultInvNum();
+  let lisNum = nextItemLisNum(invNum);
+  const sample = sageData.sampleLine || [];
+
+  for (const item of sageData.newLines.values()) {
+    const row = new Array(20).fill("");
+    row[0] = "S";
+    row[1] = sageData.sageSesNum || sample[1] || "";
+    row[2] = invNum || sample[2] || "";
+    row[3] = String(lisNum);
+    lisNum += 1000;
+    row[4] = sageData.stoFcy || sample[4] || "";
+    row[5] = String(item.qty);
+    row[6] = "0";
+    row[7] = "1";
+    row[8] = item.ref;
+    row[9] = item.lote;
+    row[10] = item.sublote;
+    row[11] = "";
+    row[12] = sageData.sageUsesLoc ? item.loc : "";
+    row[13] = sample[13] || "A";
+    row[14] = sample[14] || "UN";
+    row[15] = sample[15] || "1";
+    finalS.push(row);
+  }
+
+  return finalS;
+}
+
+function exportSageCsv() {
+  if (!sageData?.baseS?.length) {
+    setMsg("Primero debes cargar una base SAGE.", "warn");
+    return;
+  }
+
+  const finalS = buildFinalSageLines();
+  const content = serializeSageCsv(sageData.baseE, sageData.baseL, finalS);
+  const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+  const filename = `sage_x3_${sageData.sageSesNum || "inventario"}_${stamp}.csv`;
+  downloadTextFile(filename, content);
+  setMsg(`CSV SAGE generado (${finalS.length} líneas S).`, "ok");
+}
 function findLineById(id) {
   return currentLines.find((l) => l.id === id) || null;
 }
@@ -120,6 +338,8 @@ function renderTable(lines) {
 
   for (const l of lines) {
     const tr = document.createElement("tr");
+    if (l.sageStatus === "match") tr.classList.add("sage-match");
+    if (l.sageStatus === "new") tr.classList.add("sage-new");
     if (l.manual) {
       tr.classList.add("manual-row");
       tr.title = "Registro introducido manualmente";
@@ -282,6 +502,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
       manual,
       createdAt: Date.now(),
     };
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     lastInsertedId = line.id;
     setMsg(`OK: ${ref} (lote ${lote ?? "-"}) (sublote ${sublote})${manual ? " [manual]" : ""}`, "ok");
@@ -293,6 +515,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     line.cantidad += cantidad;
     line.createdAt = Date.now();
     line.manual = Boolean(line.manual || manual);
+    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+    if (sageStatus) line.sageStatus = sageStatus;
     await putLine(db, line);
     lastInsertedId = line.id;
     setMsg(`OK (agregado): ${ref} (lote ${lote ?? "-"}) → cantidad ${line.cantidad}${manual ? " [manual]" : ""}`, "ok");
@@ -310,6 +534,8 @@ async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
     manual,
     createdAt: Date.now(),
   };
+  const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
+  if (sageStatus) line.sageStatus = sageStatus;
   await putLine(db, line);
   lastInsertedId = line.id;
   setMsg(`OK: ${ref} (lote ${lote ?? "-"})${manual ? " [manual]" : ""}`, "ok");
@@ -634,6 +860,15 @@ async function doReset() {
   await clearAll(db);
   currentLoc = null;
   lastInsertedId = null;
+  if (sageData) {
+    sageData.touched = new Set();
+    sageData.newLines = new Map();
+    for (const row of sageData.baseS) {
+      row[5] = "0";
+      row[7] = row[7] || "1";
+    }
+    updateSageStatusPanel();
+  }
   if (el.locText) el.locText.textContent = "—";
   if (el.lastText) el.lastText.textContent = "—";
   setState(STATE.WAIT_LOC);
@@ -838,6 +1073,17 @@ async function main() {
   safeOn(el.btnMenuExport, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExport(); });
   safeOn(el.btnExportCsv, "click", async () => { await doExportCsv(); });
   safeOn(el.btnMenuExportCsv, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExportCsv(); });
+  safeOn(el.btnLoadSage, "click", () => el.sageBaseInput?.click?.());
+  safeOn(el.btnMenuLoadSage, "click", (evt) => { closeDetailsMenuFromEvent(evt); el.sageBaseInput?.click?.(); });
+  safeOn(el.sageBaseInput, "change", async (evt) => {
+    const file = evt?.target?.files?.[0];
+    await loadSageBaseFile(file);
+    evt.target.value = "";
+  });
+  safeOn(el.btnAllowZero, "click", () => applyAllowZeroToSage());
+  safeOn(el.btnMenuAllowZero, "click", (evt) => { closeDetailsMenuFromEvent(evt); applyAllowZeroToSage(); });
+  safeOn(el.btnExportSage, "click", () => exportSageCsv());
+  safeOn(el.btnMenuExportSage, "click", (evt) => { closeDetailsMenuFromEvent(evt); exportSageCsv(); });
   safeOn(el.btnReset, "click", async () => { await doReset(); });
   safeOn(el.btnMenuReset, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doReset(); });
   safeOn(el.tbody, "click", (evt) => {
@@ -853,6 +1099,7 @@ async function main() {
   } catch (_) {}
   updatePdaModeUi();
   setState(STATE.WAIT_LOC);
+  updateSageStatusPanel();
   setMsg("Listo. Escanea una UBICACIÓN.", "ok");
   await refresh();
 }
