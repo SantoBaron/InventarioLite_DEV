@@ -11,7 +11,7 @@
     <header class="top">
       <div>
         <h1>Inventario</h1>
-        <p class="muted">Escanea ubicación → escanea artículos → pulsa <b>Siguiente ubicación</b> (o escanea <b>SIGUIENTE</b>) para pasar a otra ubicación. Pulsa <b>Finalizar</b> (o escanea <b>FIN</b>) para cerrar.</p>
+        <p class="muted">Carga sesión CSV SAGE + contador, pulsa <b>Iniciar conteo</b>, escanea ubicación y luego artículos. Usa <b>Cambio de ubicación</b> para continuar y <b>Finalizar</b> para cerrar sesión.</p>
       </div>
       <div class="actions">
         <a href="../../index.html" class="link-button secondary" title="Volver a inicio">HOME</a>
@@ -19,9 +19,8 @@
         <button id="btnUndo" class="secondary" title="Deshacer último registro">Undo</button>
         <button id="btnExport" class="secondary">Exportar Excel</button>
         <button id="btnExportCsv" class="secondary">Exportar CSV</button>
-        <button id="btnLoadSage" class="secondary">Cargar base SAGE</button>
-        <button id="btnAllowZero" class="secondary">Aplicar permitir 0</button>
-        <button id="btnExportSage" class="secondary">Exportar CSV SAGE</button>
+        <button id="btnAllowZero" class="secondary sage-post-close">Aplicar permitir 0</button>
+        <button id="btnExportSage" class="secondary sage-post-close">Exportar CSV SAGE</button>
         <button id="btnReset" class="danger">Reset</button>
       </div>
     </header>
@@ -46,7 +45,7 @@
         </div>
         <div id="msg" class="msg"></div>
         <div class="quick-actions">
-          <button id="btnNextLocCard" class="secondary">Siguiente ubicación</button>
+          <button id="btnNextLocCard" class="secondary">Cambio de ubicación</button>
           <button id="btnFinishCard" class="secondary">Finalizar</button>
           <button id="btnManualCard" class="secondary">Alta manual</button>
         </div>
@@ -54,20 +53,40 @@
           <summary class="secondary">Acciones</summary>
           <div class="mobile-actions-list">
             <a href="../../index.html" class="link-button secondary" role="button">HOME</a>
-            <button id="btnMenuNext" class="secondary" type="button">Siguiente ubicación</button>
+            <button id="btnMenuNext" class="secondary" type="button">Cambio de ubicación</button>
             <button id="btnMenuFinish" class="secondary" type="button">Finalizar</button>
             <button id="btnMenuManual" class="secondary" type="button">Alta manual</button>
             <button id="btnMenuUndo" class="secondary" type="button">Undo</button>
             <button id="btnMenuExport" class="secondary" type="button">Exportar Excel</button>
             <button id="btnMenuExportCsv" class="secondary" type="button">Exportar CSV</button>
-            <button id="btnMenuLoadSage" class="secondary" type="button">Cargar base SAGE</button>
-            <button id="btnMenuAllowZero" class="secondary" type="button">Aplicar permitir 0</button>
-            <button id="btnMenuExportSage" class="secondary" type="button">Exportar CSV SAGE</button>
+            <button id="btnMenuAllowZero" class="secondary sage-post-close" type="button">Aplicar permitir 0</button>
+            <button id="btnMenuExportSage" class="secondary sage-post-close" type="button">Exportar CSV SAGE</button>
             <button id="btnMenuReset" class="danger" type="button">Reset</button>
           </div>
         </details>
       </div>
 
+
+      <div class="card session-card">
+        <div class="label">Sesión de inventario</div>
+        <div class="session-grid">
+          <label>Archivo exportación SAGE (CSV)
+            <input id="sessionSageFile" type="file" accept=".csv,text/csv" />
+          </label>
+          <label>Contador
+            <input id="sessionCounter" autocomplete="off" placeholder="Nombre de contador" />
+          </label>
+          <button id="btnCreateSession" class="secondary" type="button">Iniciar conteo</button>
+        </div>
+        <div class="session-grid reopen-grid">
+          <label>Reabrir sesión existente
+            <select id="sessionSelect"></select>
+          </label>
+          <button id="btnOpenSession" class="secondary" type="button">Abrir sesión</button>
+        </div>
+        <p id="sessionInfo" class="muted compact">Sin sesión activa.</p>
+        <p id="progressText" class="muted compact">Leídos 0 / Pendiente 0</p>
+      </div>
 
       <div class="card sage-status-card">
         <div class="label">Modo SAGE X3</div>
@@ -79,7 +98,6 @@
         </div>
       </div>
 
-      <input id="sageBaseInput" type="file" accept=".csv,text/csv" hidden />
 
       <input id="scanInput" class="scan-input" autocomplete="off" autofocus />
 
