@@ -143,6 +143,85 @@ function makeKey(ubicacion, ref, lote, sublote) {
   return `${u}|${r}|${l}|${sl}`;
 }
 
+function formatDateTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts).toLocaleString("es-ES");
+}
+
+function setSessionInfo() {
+  if (!el.sessionInfo) return;
+  if (!currentSession) {
+    el.sessionInfo.textContent = "Sin sesión activa.";
+    return;
+  }
+  const status = currentSession.status === "CLOSED" ? "Cerrada" : "Abierta";
+  el.sessionInfo.textContent = `Activa: ${currentSession.name} · Estado: ${status} · Contador: ${currentSession.contador || "—"} · Creada: ${formatDateTime(currentSession.createdAt)}`;
+}
+
+function isSessionClosed() {
+  return currentSession?.status === "CLOSED";
+}
+
+function updateSageActionsVisibility() {
+  const visible = isSessionClosed();
+  for (const node of [el.btnAllowZero, el.btnExportSage, el.btnMenuAllowZero, el.btnMenuExportSage]) {
+    if (!node) continue;
+    node.hidden = !visible;
+    node.disabled = !visible;
+  }
+}
+
+async function renderSessionSelect() {
+  if (!el.sessionSelect) return;
+  const sessions = await getInventorySessions(db);
+  const ordered = [...sessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  el.sessionSelect.innerHTML = ordered.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} · ${escapeHtml(s.contador || "sin contador")}</option>`).join("");
+  if (currentSessionId && ordered.some((s) => s.id === currentSessionId)) {
+    el.sessionSelect.value = currentSessionId;
+  }
+}
+
+async function switchSession(sessionId) {
+  if (!sessionId) return;
+  const session = await getInventorySession(db, sessionId);
+  if (!session) return;
+  currentSessionId = session.id;
+  currentSession = session;
+  sageData = sageDataBySession.get(session.id) || null;
+  currentLoc = null;
+  if (el.locText) el.locText.textContent = "—";
+  setState(isSessionClosed() ? STATE.FINISHED : STATE.WAIT_LOC);
+  setSessionInfo();
+  updateSageStatusPanel();
+  updateSageActionsVisibility();
+  await refresh();
+  try { localStorage.setItem("inventario_active_session", session.id); } catch (_) {}
+}
+
+async function createInventorySession({ contador, baseFile }) {
+  const now = Date.now();
+  const sessionId = uuid();
+  const session = {
+    id: sessionId,
+    name: `INV-${new Date(now).toISOString().slice(0, 19).replace("T", " ")}`,
+    contador: contador || "",
+    status: "OPEN",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await putInventorySession(db, session);
+
+  if (baseFile) {
+    await loadSageBaseFile(baseFile, sessionId);
+  } else {
+    sageDataBySession.set(sessionId, null);
+  }
+
+  await renderSessionSelect();
+  await switchSession(sessionId);
+  setMsg(`Sesión creada: ${session.name}${contador ? ` (contador: ${contador})` : ""}.`, "ok");
+}
 
 function makeIdentityKey(ref, lote, sublote) {
   const r = norm(ref).toUpperCase();
