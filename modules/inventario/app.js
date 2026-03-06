@@ -5,7 +5,6 @@ import {
   putLine,
   deleteLine,
   clearAll,
-  findByKey,
   getInventoryMeta,
   putInventoryMeta,
   getInventorySessions,
@@ -60,11 +59,8 @@ const el = {
   btnExport: document.getElementById("btnExport"),
   btnExportCsv: document.getElementById("btnExportCsv"),
   btnReset: document.getElementById("btnReset"),
-  sageBaseInput: document.getElementById("sageBaseInput"),
-  btnLoadSage: document.getElementById("btnLoadSage"),
   btnAllowZero: document.getElementById("btnAllowZero"),
   btnExportSage: document.getElementById("btnExportSage"),
-  btnMenuLoadSage: document.getElementById("btnMenuLoadSage"),
   btnMenuAllowZero: document.getElementById("btnMenuAllowZero"),
   btnMenuExportSage: document.getElementById("btnMenuExportSage"),
   sageSesNum: document.getElementById("sageSesNum"),
@@ -157,7 +153,21 @@ function setSessionInfo() {
     el.sessionInfo.textContent = "Sin sesión activa.";
     return;
   }
-  el.sessionInfo.textContent = `Activa: ${currentSession.name} · Contador: ${currentSession.contador || "—"} · Creada: ${formatDateTime(currentSession.createdAt)}`;
+  const status = currentSession.status === "CLOSED" ? "Cerrada" : "Abierta";
+  el.sessionInfo.textContent = `Activa: ${currentSession.name} · Estado: ${status} · Contador: ${currentSession.contador || "—"} · Creada: ${formatDateTime(currentSession.createdAt)}`;
+}
+
+function isSessionClosed() {
+  return currentSession?.status === "CLOSED";
+}
+
+function updateSageActionsVisibility() {
+  const visible = isSessionClosed();
+  for (const node of [el.btnAllowZero, el.btnExportSage, el.btnMenuAllowZero, el.btnMenuExportSage]) {
+    if (!node) continue;
+    node.hidden = !visible;
+    node.disabled = !visible;
+  }
 }
 
 async function renderSessionSelect() {
@@ -179,9 +189,10 @@ async function switchSession(sessionId) {
   sageData = sageDataBySession.get(session.id) || null;
   currentLoc = null;
   if (el.locText) el.locText.textContent = "—";
-  setState(STATE.WAIT_LOC);
+  setState(isSessionClosed() ? STATE.FINISHED : STATE.WAIT_LOC);
   setSessionInfo();
   updateSageStatusPanel();
+  updateSageActionsVisibility();
   await refresh();
   try { localStorage.setItem("inventario_active_session", session.id); } catch (_) {}
 }
@@ -387,6 +398,10 @@ async function loadSageBaseFile(file, targetSessionId = currentSessionId) {
 }
 
 function applyAllowZeroToSage() {
+  if (!isSessionClosed()) {
+    setMsg("Debes cerrar la sesión antes de aplicar permitir 0.", "warn");
+    return;
+  }
   if (!sageData?.baseS?.length) {
     setMsg("Primero debes cargar una base SAGE.", "warn");
     return;
@@ -444,6 +459,10 @@ function buildFinalSageLines() {
 }
 
 function exportSageCsv() {
+  if (!isSessionClosed()) {
+    setMsg("Debes cerrar la sesión antes de exportar CSV SAGE.", "warn");
+    return;
+  }
   if (!sageData?.baseS?.length) {
     setMsg("Primero debes cargar una base SAGE.", "warn");
     return;
@@ -575,6 +594,10 @@ async function registerLocation(locRaw) {
     setMsg("Crea o selecciona una sesión antes de escanear.", "warn");
     return;
   }
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
+    return;
+  }
   const loc = norm(locRaw);
   if (!loc) {
     setMsg("Ubicación vacía. Vuelve a escanear.", "err");
@@ -587,17 +610,30 @@ async function registerLocation(locRaw) {
 }
 
 async function finishInventory() {
-  if (appState === STATE.FINISHED) {
-    setMsg("El inventario ya está finalizado.", "warn");
+  if (!currentSessionId || !currentSession) {
+    setMsg("No hay sesión activa.", "warn");
     return;
   }
+  if (isSessionClosed()) {
+    setMsg("La sesión ya está cerrada.", "warn");
+    return;
+  }
+  currentSession.status = "CLOSED";
+  currentSession.updatedAt = Date.now();
+  await putInventorySession(db, currentSession);
   setState(STATE.FINISHED);
   currentLoc = null;
   if (el.locText) el.locText.textContent = "—";
-  setMsg("Inventario finalizado. Puedes exportar a Excel o CSV.", "warn");
+  setSessionInfo();
+  updateSageActionsVisibility();
+  setMsg("Sesión cerrada. Ya puedes aplicar permitir 0 y exportar CSV SAGE.", "warn");
 }
 
 async function closeCurrentLocation() {
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
+    return null;
+  }
   if (!currentLoc) {
     setMsg("No hay ubicación activa para cerrar.", "warn");
     return;
@@ -611,6 +647,10 @@ async function closeCurrentLocation() {
 async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
   if (!currentSessionId) {
     setMsg("Crea o selecciona una sesión antes de registrar artículos.", "warn");
+    return null;
+  }
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
     return null;
   }
   if (!currentLoc) {
@@ -959,6 +999,11 @@ function handleScan(raw) {
   if (cmd?.cmd === "NEXT_LOC") return closeCurrentLocation();
   if (cmd?.cmd === "LOC") return registerLocation(cmd.loc);
 
+  if (isSessionClosed()) {
+    setMsg("Sesión cerrada: solo puedes exportar resultados.", "warn");
+    return;
+  }
+
   if (appState === STATE.FINISHED) {
     setState(STATE.WAIT_LOC);
     setMsg("Se reanuda captura: escanea UBICACIÓN.", "warn");
@@ -1234,13 +1279,6 @@ async function main() {
   safeOn(el.btnMenuExport, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExport(); });
   safeOn(el.btnExportCsv, "click", async () => { await doExportCsv(); });
   safeOn(el.btnMenuExportCsv, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExportCsv(); });
-  safeOn(el.btnLoadSage, "click", () => el.sageBaseInput?.click?.());
-  safeOn(el.btnMenuLoadSage, "click", (evt) => { closeDetailsMenuFromEvent(evt); el.sageBaseInput?.click?.(); });
-  safeOn(el.sageBaseInput, "change", async (evt) => {
-    const file = evt?.target?.files?.[0];
-    await loadSageBaseFile(file);
-    evt.target.value = "";
-  });
   safeOn(el.btnAllowZero, "click", () => applyAllowZeroToSage());
   safeOn(el.btnMenuAllowZero, "click", (evt) => { closeDetailsMenuFromEvent(evt); applyAllowZeroToSage(); });
   safeOn(el.btnExportSage, "click", () => exportSageCsv());
@@ -1259,6 +1297,7 @@ async function main() {
     if (stored != null) pdaMode = stored === "1";
   } catch (_) {}
   updatePdaModeUi();
+  updateSageActionsVisibility();
 
   await renderSessionSelect();
   let preferredSessionId = null;
@@ -1276,6 +1315,7 @@ async function main() {
     setState(STATE.WAIT_LOC);
     setSessionInfo();
     updateSageStatusPanel();
+    updateSageActionsVisibility();
     setMsg("Crea una sesión de inventario para empezar.", "warn");
     await refresh();
   }

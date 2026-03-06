@@ -71,6 +71,9 @@ body.pda-mode a.link-button.secondary { background: #d2ebff; }
 .msg.warn { color: #ffd36a; }
 .quick-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 
+.sage-post-close[hidden] { display: none !important; }
+
+
 .mobile-actions-menu { display: none; margin-top: 10px; }
 .mobile-actions-menu > summary {
   list-style: none;

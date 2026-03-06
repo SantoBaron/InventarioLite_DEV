@@ -19,9 +19,8 @@
         <button id="btnUndo" class="secondary" title="Deshacer último registro">Undo</button>
         <button id="btnExport" class="secondary">Exportar Excel</button>
         <button id="btnExportCsv" class="secondary">Exportar CSV</button>
-        <button id="btnLoadSage" class="secondary">Cargar base SAGE</button>
-        <button id="btnAllowZero" class="secondary">Aplicar permitir 0</button>
-        <button id="btnExportSage" class="secondary">Exportar CSV SAGE</button>
+        <button id="btnAllowZero" class="secondary sage-post-close">Aplicar permitir 0</button>
+        <button id="btnExportSage" class="secondary sage-post-close">Exportar CSV SAGE</button>
         <button id="btnReset" class="danger">Reset</button>
       </div>
     </header>
@@ -60,9 +59,8 @@
             <button id="btnMenuUndo" class="secondary" type="button">Undo</button>
             <button id="btnMenuExport" class="secondary" type="button">Exportar Excel</button>
             <button id="btnMenuExportCsv" class="secondary" type="button">Exportar CSV</button>
-            <button id="btnMenuLoadSage" class="secondary" type="button">Cargar base SAGE</button>
-            <button id="btnMenuAllowZero" class="secondary" type="button">Aplicar permitir 0</button>
-            <button id="btnMenuExportSage" class="secondary" type="button">Exportar CSV SAGE</button>
+            <button id="btnMenuAllowZero" class="secondary sage-post-close" type="button">Aplicar permitir 0</button>
+            <button id="btnMenuExportSage" class="secondary sage-post-close" type="button">Exportar CSV SAGE</button>
             <button id="btnMenuReset" class="danger" type="button">Reset</button>
           </div>
         </details>
@@ -96,7 +94,6 @@
         </div>
       </div>
 
-      <input id="sageBaseInput" type="file" accept=".csv,text/csv" hidden />
 
       <input id="scanInput" class="scan-input" autocomplete="off" autofocus />
 
