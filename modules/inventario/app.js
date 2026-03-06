@@ -73,6 +73,7 @@ const el = {
   btnOpenSession: document.getElementById("btnOpenSession"),
   sessionInfo: document.getElementById("sessionInfo"),
   progressText: document.getElementById("progressText"),
+  setupMsg: document.getElementById("setupMsg"),
   sessionSetupSection: document.getElementById("sessionSetupSection"),
   countingSection: document.getElementById("countingSection"),
   topActions: document.getElementById("topActions"),
@@ -112,9 +113,16 @@ function closeDetailsMenuFromEvent(evt) {
 }
 
 function setMsg(text = "", kind = "") {
-  if (!el.msg) return;
-  el.msg.textContent = text;
-  el.msg.className = "msg " + (kind || "");
+  const active = el.countingSection?.hidden ? el.setupMsg : el.msg;
+  if (active) {
+    active.textContent = text;
+    active.className = "msg " + (kind || "");
+  }
+  const secondary = el.countingSection?.hidden ? el.msg : el.setupMsg;
+  if (secondary) {
+    secondary.textContent = "";
+    secondary.className = "msg";
+  }
 }
 
 function setState(s) {
@@ -439,6 +447,166 @@ async function switchSession(sessionId) {
   sageData = sageDataBySession.get(session.id) || null;
   currentLoc = null;
   setCountScreenVisible(true);
+  if (el.locText) el.locText.textContent = "—";
+  setState(isSessionClosed() ? STATE.FINISHED : STATE.WAIT_LOC);
+  setSessionInfo();
+  updateSageStatusPanel();
+  updateSageActionsVisibility();
+  await refresh();
+  setMsg(isSessionClosed() ? "Sesión cerrada cargada." : "Introduzca ubicación", "warn");
+  try { localStorage.setItem("inventario_active_session", session.id); } catch (_) {}
+}
+
+async function createInventorySession({ contador, baseFile }) {
+  if (!baseFile) {
+    setMsg("Debes cargar un archivo CSV de exportación SAGE.", "warn");
+    return;
+  }
+  if (!contador) {
+    setMsg("Debes indicar el nombre del contador.", "warn");
+    return;
+  }
+
+  const now = Date.now();
+  const sessionId = uuid();
+  const loadedSageData = await loadSageBaseFile(baseFile, sessionId, { silent: true });
+  if (!loadedSageData) return;
+
+  const sessionName = loadedSageData.sageSesNum || baseFile.name.replace(/\.csv$/i, "") || `INV-${sessionId.slice(0, 8)}`;
+  const session = {
+    id: sessionId,
+    name: sessionName,
+    contador,
+    status: "OPEN",
+    expectedItems: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const seedMap = new Map();
+  for (const row of loadedSageData.baseS) {
+    const ref = norm(row[8] || "");
+    if (!ref) continue;
+    const lote = norm(row[9] || "") || null;
+    const sublote = norm(row[10] || "") || null;
+    const identityKey = makeIdentityKey(ref, lote, sublote);
+    if (seedMap.has(identityKey)) continue;
+    seedMap.set(identityKey, {
+      id: uuid(),
+      key: makeKey("", ref, lote, sublote),
+      identityKey,
+      sessionId,
+      sessionName,
+      ubicacion: "",
+      ref,
+      lote,
+      sublote,
+      cantidad: 0,
+      manual: false,
+      createdAt: now,
+    });
+  }
+
+  for (const row of seedMap.values()) {
+    await putLine(db, row);
+  }
+
+  session.expectedItems = seedMap.size;
+  await putInventorySession(db, session);
+  await renderSessionSelect();
+  await switchSession(sessionId);
+  if (el.sessionCounter) el.sessionCounter.value = "";
+  if (el.sessionSageFile) el.sessionSageFile.value = "";
+  setMsg(`Sesión ${sessionName} iniciada. Introduzca ubicación.`, "ok");
+}
+
+function makeIdentityKey(ref, lote, sublote) {
+  const r = norm(ref).toUpperCase();
+  const l = norm(lote || "").toUpperCase();
+  const sl = norm(sublote || "").toUpperCase();
+  return `${r}|${l}|${sl}`;
+}
+
+function formatDateTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts).toLocaleString("es-ES");
+}
+
+function setSessionInfo() {
+  if (!el.sessionInfo) return;
+  if (!currentSession) {
+    el.sessionInfo.textContent = "Sin sesión activa.";
+    return null;
+  }
+  const status = currentSession.status === "CLOSED" ? "Cerrada" : "Abierta";
+  el.sessionInfo.textContent = `Activa: ${currentSession.name} · Estado: ${status} · Contador: ${currentSession.contador || "—"} · Creada: ${formatDateTime(currentSession.createdAt)}`;
+}
+
+function updateProgress() {
+  if (!el.progressText) return;
+  const expected = Number(currentSession?.expectedItems || 0);
+  const counted = currentLines.filter((l) => (Number(l.cantidad || 0) > 0)).length;
+  const pending = expected - counted;
+  const suffix = pending < 0 ? ` (sobrantes ${Math.abs(pending)})` : "";
+  el.progressText.textContent = `Leídos ${counted} / Pendiente ${pending}${suffix}`;
+}
+
+
+function setCountScreenVisible(visible) {
+  if (el.countingSection) el.countingSection.hidden = !visible;
+  if (el.sessionSetupSection) el.sessionSetupSection.hidden = visible;
+  if (el.topActions) {
+    for (const node of el.topActions.querySelectorAll('button')) {
+      if (node.id === 'btnModePda') {
+        node.hidden = !visible;
+      } else {
+        node.hidden = !visible;
+      }
+    }
+  }
+}
+
+
+function setCreateSessionBusy(isBusy) {
+  if (!el.btnCreateSession) return;
+  el.btnCreateSession.disabled = isBusy;
+  el.btnCreateSession.classList.toggle("is-loading", isBusy);
+  el.btnCreateSession.textContent = isBusy ? "Iniciando conteo..." : "Iniciar conteo";
+}
+
+function isSessionClosed() {
+  return currentSession?.status === "CLOSED";
+}
+
+function updateSageActionsVisibility() {
+  const visible = isSessionClosed();
+  for (const node of [el.btnAllowZero, el.btnExportSage, el.btnMenuAllowZero, el.btnMenuExportSage]) {
+    if (!node) continue;
+    node.hidden = !visible;
+    node.disabled = !visible;
+  }
+}
+
+async function renderSessionSelect() {
+  if (!el.sessionSelect) return;
+  const sessions = await getInventorySessions(db);
+  const ordered = [...sessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  el.sessionSelect.innerHTML = ordered.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} · ${escapeHtml(s.contador || "sin contador")} · ${s.status === "CLOSED" ? "cerrada" : "abierta"}</option>`).join("");
+  if (currentSessionId && ordered.some((s) => s.id === currentSessionId)) {
+    el.sessionSelect.value = currentSessionId;
+  }
+}
+
+async function switchSession(sessionId) {
+  if (!sessionId) return;
+  const session = await getInventorySession(db, sessionId);
+  if (!session) return;
+  currentSessionId = session.id;
+  currentSession = session;
+  sageData = sageDataBySession.get(session.id) || null;
+  currentLoc = null;
+  setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
   if (el.locText) el.locText.textContent = "—";
   setState(isSessionClosed() ? STATE.FINISHED : STATE.WAIT_LOC);
   setSessionInfo();
@@ -916,6 +1084,7 @@ async function finishInventory() {
   setState(STATE.FINISHED);
   currentLoc = null;
   setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
   if (el.locText) el.locText.textContent = "—";
   setSessionInfo();
   updateSageActionsVisibility();
@@ -933,6 +1102,7 @@ async function closeCurrentLocation() {
   }
   currentLoc = null;
   setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
   if (el.locText) el.locText.textContent = "—";
   setState(STATE.WAIT_LOC);
   setMsg("Ubicación cerrada. Escanea la siguiente ubicación.", "warn");
@@ -1464,7 +1634,15 @@ async function main() {
   safeOn(el.btnCreateSession, "click", async () => {
     const contador = norm(el.sessionCounter?.value || "");
     const baseFile = el.sessionSageFile?.files?.[0] || null;
-    await createInventorySession({ contador, baseFile });
+    setCreateSessionBusy(true);
+    try {
+      await createInventorySession({ contador, baseFile });
+    } catch (e) {
+      console.error(e);
+      setMsg("Error iniciando conteo: " + (e?.message || e), "err");
+    } finally {
+      setCreateSessionBusy(false);
+    }
   });
 
   safeOn(el.btnOpenSession, "click", async () => {
