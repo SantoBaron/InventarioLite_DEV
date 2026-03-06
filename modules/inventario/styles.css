@@ -178,6 +178,10 @@ body.pda-mode tbody tr.sage-new td {
   align-self: end;
 }
 
+.reopen-grid {
+  margin-top: 8px;
+}
+
 body.pda-mode .session-grid label { color: #35638e; }
 body.pda-mode .session-grid input,
 body.pda-mode .session-grid select {
