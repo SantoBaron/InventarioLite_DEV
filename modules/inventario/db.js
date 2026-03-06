@@ -1,10 +1,11 @@
 const DB_NAME = "mini_inventario_db";
-const DB_VER = 4;
+const DB_VER = 5;
 const STORE = "lines";
 const ISSUE_SESSIONS_STORE = "issue_sessions";
 const ISSUE_LINES_STORE = "issue_lines";
 const ISSUE_REQUESTS_STORE = "issue_requests";
 const INVENTORY_META_STORE = "inventory_meta";
+const INVENTORY_SESSIONS_STORE = "inventory_sessions";
 
 export function openDb() {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,22 @@ export function openDb() {
         const meta = db.createObjectStore(INVENTORY_META_STORE, { keyPath: "id" });
         meta.createIndex("by_updatedAt", "updatedAt", { unique: false });
       }
+
+      if (!db.objectStoreNames.contains(INVENTORY_SESSIONS_STORE)) {
+        const sessions = db.createObjectStore(INVENTORY_SESSIONS_STORE, { keyPath: "id" });
+        sessions.createIndex("by_createdAt", "createdAt", { unique: false });
+        sessions.createIndex("by_status", "status", { unique: false });
+      }
+
+      if (db.objectStoreNames.contains(STORE)) {
+        const linesStore = req.transaction.objectStore(STORE);
+        if (!linesStore.indexNames.contains("by_session")) {
+          linesStore.createIndex("by_session", "sessionId", { unique: false });
+        }
+        if (!linesStore.indexNames.contains("by_session_key")) {
+          linesStore.createIndex("by_session_key", ["sessionId", "key"], { unique: false });
+        }
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -66,6 +83,10 @@ function txIssueRequests(db, mode = "readonly") {
 
 function txInventoryMeta(db, mode = "readonly") {
   return db.transaction(INVENTORY_META_STORE, mode).objectStore(INVENTORY_META_STORE);
+}
+
+function txInventorySessions(db, mode = "readonly") {
+  return db.transaction(INVENTORY_SESSIONS_STORE, mode).objectStore(INVENTORY_SESSIONS_STORE);
 }
 
 export async function getAllLines(db) {
@@ -101,6 +122,38 @@ export async function findByKey(db, key) {
   return new Promise((resolve, reject) => {
     const idx = tx(db, "readonly").index("by_key");
     const req = idx.getAll(IDBKeyRange.only(key));
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getLinesBySession(db, sessionId) {
+  if (!sessionId) return [];
+  return new Promise((resolve, reject) => {
+    const idx = tx(db, "readonly").index("by_session");
+    const req = idx.getAll(IDBKeyRange.only(sessionId));
+    req.onsuccess = () => {
+      const lines = req.result || [];
+      lines.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      resolve(lines);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function clearLinesBySession(db, sessionId) {
+  const lines = await getLinesBySession(db, sessionId);
+  for (const line of lines) {
+    await deleteLine(db, line.id);
+  }
+  return true;
+}
+
+export async function findBySessionKey(db, sessionId, key) {
+  if (!sessionId || !key) return [];
+  return new Promise((resolve, reject) => {
+    const idx = tx(db, "readonly").index("by_session_key");
+    const req = idx.getAll(IDBKeyRange.only([sessionId, key]));
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
   });
@@ -216,6 +269,31 @@ export async function putInventoryMeta(db, row) {
 export async function deleteInventoryMeta(db, id) {
   return new Promise((resolve, reject) => {
     const req = txInventoryMeta(db, "readwrite").delete(id);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getInventorySessions(db) {
+  return new Promise((resolve, reject) => {
+    const idx = txInventorySessions(db, "readonly").index("by_createdAt");
+    const req = idx.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getInventorySession(db, id) {
+  return new Promise((resolve, reject) => {
+    const req = txInventorySessions(db, "readonly").get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putInventorySession(db, row) {
+  return new Promise((resolve, reject) => {
+    const req = txInventorySessions(db, "readwrite").put(row);
     req.onsuccess = () => resolve(true);
     req.onerror = () => reject(req.error);
   });
