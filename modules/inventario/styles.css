@@ -40,6 +40,7 @@ button.warn:hover { background: #3c2e16; }
 button.danger { border-color: #6b2a2a; background: #2a1414; }
 button.danger:hover { background: #351717; }
 button.mini { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+button.is-loading { opacity: .8; cursor: progress; }
 
 a.link-button {
   display: inline-flex;
@@ -70,6 +71,9 @@ body.pda-mode a.link-button.secondary { background: #d2ebff; }
 .msg.err { color: #ff7b7b; }
 .msg.warn { color: #ffd36a; }
 .quick-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.sage-post-close[hidden] { display: none !important; }
+
 
 .mobile-actions-menu { display: none; margin-top: 10px; }
 .mobile-actions-menu > summary {
@@ -147,6 +151,49 @@ body.pda-mode tbody tr.sage-new td {
   opacity: 0;
 }
 
+
+.session-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.session-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: #9aa7c3;
+}
+
+.session-grid input,
+.session-grid select {
+  border: 1px solid #2a3550;
+  background: #0b1220;
+  color: #e8eefc;
+  padding: 9px 10px;
+  border-radius: 8px;
+}
+
+.session-grid button {
+  align-self: end;
+}
+
+.reopen-grid {
+  margin-top: 8px;
+}
+
+.session-card .msg {
+  margin-top: 8px;
+}
+body.pda-mode .session-grid label { color: #35638e; }
+body.pda-mode .session-grid input,
+body.pda-mode .session-grid select {
+  border-color: #84b9e1;
+  background: #f4fbff;
+  color: #113a5d;
+}
+
 .manual-dialog {
   border: 1px solid #22304d;
   background: #0f1524;
@@ -196,6 +243,10 @@ body.pda-mode tbody tr.sage-new td {
   }
 
   .row {
+    grid-template-columns: 1fr;
+  }
+
+  .session-grid {
     grid-template-columns: 1fr;
   }
 

@@ -5,9 +5,13 @@ import {
   putLine,
   deleteLine,
   clearAll,
-  findByKey,
   getInventoryMeta,
   putInventoryMeta,
+  getInventorySessions,
+  getInventorySession,
+  putInventorySession,
+  getLinesBySession,
+  clearLinesBySession,
 } from "./db.js";
 import { parseGs1 } from "./gs1.js";
 import { exportToCsv, exportToXlsx } from "./export.js";
@@ -54,17 +58,25 @@ const el = {
   btnExport: document.getElementById("btnExport"),
   btnExportCsv: document.getElementById("btnExportCsv"),
   btnReset: document.getElementById("btnReset"),
-  sageBaseInput: document.getElementById("sageBaseInput"),
-  btnLoadSage: document.getElementById("btnLoadSage"),
   btnAllowZero: document.getElementById("btnAllowZero"),
   btnExportSage: document.getElementById("btnExportSage"),
-  btnMenuLoadSage: document.getElementById("btnMenuLoadSage"),
   btnMenuAllowZero: document.getElementById("btnMenuAllowZero"),
   btnMenuExportSage: document.getElementById("btnMenuExportSage"),
   sageSesNum: document.getElementById("sageSesNum"),
   sageInvNums: document.getElementById("sageInvNums"),
   sageBaseLines: document.getElementById("sageBaseLines"),
   sageNewLines: document.getElementById("sageNewLines"),
+  sessionSelect: document.getElementById("sessionSelect"),
+  sessionCounter: document.getElementById("sessionCounter"),
+  sessionSageFile: document.getElementById("sessionSageFile"),
+  btnCreateSession: document.getElementById("btnCreateSession"),
+  btnOpenSession: document.getElementById("btnOpenSession"),
+  sessionInfo: document.getElementById("sessionInfo"),
+  progressText: document.getElementById("progressText"),
+  setupMsg: document.getElementById("setupMsg"),
+  sessionSetupSection: document.getElementById("sessionSetupSection"),
+  countingSection: document.getElementById("countingSection"),
+  topActions: document.getElementById("topActions"),
 };
 
 let db;
@@ -76,6 +88,9 @@ let manualMode = "create"; // create | edit
 let editingLineId = null;
 let pdaMode = false;
 let sageData = null;
+let currentSessionId = null;
+let currentSession = null;
+const sageDataBySession = new Map();
 
 function uuid() {
   return crypto.randomUUID
@@ -98,14 +113,21 @@ function closeDetailsMenuFromEvent(evt) {
 }
 
 function setMsg(text = "", kind = "") {
-  if (!el.msg) return;
-  el.msg.textContent = text;
-  el.msg.className = "msg " + (kind || "");
+  const active = el.countingSection?.hidden ? el.setupMsg : el.msg;
+  if (active) {
+    active.textContent = text;
+    active.className = "msg " + (kind || "");
+  }
+  const secondary = el.countingSection?.hidden ? el.msg : el.setupMsg;
+  if (secondary) {
+    secondary.textContent = "";
+    secondary.className = "msg";
+  }
 }
 
 function setState(s) {
   appState = s;
-  if (!el.stateText) return;
+  if (!el.stateText || el.countingSection?.hidden) return;
   if (s === STATE.WAIT_LOC) el.stateText.textContent = "Esperando UBICACIÓN";
   if (s === STATE.WAIT_ITEMS) el.stateText.textContent = "Escaneando ARTÍCULOS";
   if (s === STATE.FINISHED) el.stateText.textContent = "FIN DE INVENTARIO";
@@ -132,6 +154,166 @@ function makeKey(ubicacion, ref, lote, sublote) {
   return `${u}|${r}|${l}|${sl}`;
 }
 
+
+function makeIdentityKey(ref, lote, sublote) {
+  const r = norm(ref).toUpperCase();
+  const l = norm(lote || "").toUpperCase();
+  const sl = norm(sublote || "").toUpperCase();
+  return `${r}|${l}|${sl}`;
+}
+
+function formatDateTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts).toLocaleString("es-ES");
+}
+
+function setSessionInfo() {
+  if (!el.sessionInfo) return;
+  if (!currentSession) {
+    el.sessionInfo.textContent = "Sin sesión activa.";
+    return null;
+  }
+  const status = currentSession.status === "CLOSED" ? "Cerrada" : "Abierta";
+  el.sessionInfo.textContent = `Activa: ${currentSession.name} · Estado: ${status} · Contador: ${currentSession.contador || "—"} · Creada: ${formatDateTime(currentSession.createdAt)}`;
+}
+
+function updateProgress() {
+  if (!el.progressText) return;
+  const expected = Number(currentSession?.expectedItems || 0);
+  const counted = currentLines.filter((l) => (Number(l.cantidad || 0) > 0)).length;
+  const pending = expected - counted;
+  const suffix = pending < 0 ? ` (sobrantes ${Math.abs(pending)})` : "";
+  el.progressText.textContent = `Leídos ${counted} / Pendiente ${pending}${suffix}`;
+}
+
+
+function setCountScreenVisible(visible) {
+  if (el.countingSection) el.countingSection.hidden = !visible;
+  if (el.sessionSetupSection) el.sessionSetupSection.hidden = visible;
+  if (el.topActions) {
+    for (const node of el.topActions.querySelectorAll('button')) {
+      if (node.id === 'btnModePda') {
+        node.hidden = !visible;
+      } else {
+        node.hidden = !visible;
+      }
+    }
+  }
+}
+
+
+function setCreateSessionBusy(isBusy) {
+  if (!el.btnCreateSession) return;
+  el.btnCreateSession.disabled = isBusy;
+  el.btnCreateSession.classList.toggle("is-loading", isBusy);
+  el.btnCreateSession.textContent = isBusy ? "Iniciando conteo..." : "Iniciar conteo";
+}
+
+function isSessionClosed() {
+  return currentSession?.status === "CLOSED";
+}
+
+function updateSageActionsVisibility() {
+  const visible = isSessionClosed();
+  for (const node of [el.btnAllowZero, el.btnExportSage, el.btnMenuAllowZero, el.btnMenuExportSage]) {
+    if (!node) continue;
+    node.hidden = !visible;
+    node.disabled = !visible;
+  }
+}
+
+async function renderSessionSelect() {
+  if (!el.sessionSelect) return;
+  const sessions = await getInventorySessions(db);
+  const ordered = [...sessions].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  el.sessionSelect.innerHTML = ordered.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} · ${escapeHtml(s.contador || "sin contador")} · ${s.status === "CLOSED" ? "cerrada" : "abierta"}</option>`).join("");
+  if (currentSessionId && ordered.some((s) => s.id === currentSessionId)) {
+    el.sessionSelect.value = currentSessionId;
+  }
+}
+
+async function switchSession(sessionId) {
+  if (!sessionId) return;
+  const session = await getInventorySession(db, sessionId);
+  if (!session) return;
+  currentSessionId = session.id;
+  currentSession = session;
+  sageData = sageDataBySession.get(session.id) || null;
+  currentLoc = null;
+  setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
+  if (el.locText) el.locText.textContent = "—";
+  setState(isSessionClosed() ? STATE.FINISHED : STATE.WAIT_LOC);
+  setSessionInfo();
+  updateSageStatusPanel();
+  updateSageActionsVisibility();
+  await refresh();
+  setMsg(isSessionClosed() ? "Sesión cerrada cargada." : "Introduzca ubicación", "warn");
+  try { localStorage.setItem("inventario_active_session", session.id); } catch (_) {}
+}
+
+async function createInventorySession({ contador, baseFile }) {
+  if (!baseFile) {
+    setMsg("Debes cargar un archivo CSV de exportación SAGE.", "warn");
+    return;
+  }
+  if (!contador) {
+    setMsg("Debes indicar el nombre del contador.", "warn");
+    return;
+  }
+
+  const now = Date.now();
+  const sessionId = uuid();
+  const loadedSageData = await loadSageBaseFile(baseFile, sessionId, { silent: true });
+  if (!loadedSageData) return;
+
+  const sessionName = loadedSageData.sageSesNum || baseFile.name.replace(/\.csv$/i, "") || `INV-${sessionId.slice(0, 8)}`;
+  const session = {
+    id: sessionId,
+    name: sessionName,
+    contador,
+    status: "OPEN",
+    expectedItems: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const seedMap = new Map();
+  for (const row of loadedSageData.baseS) {
+    const ref = norm(row[8] || "");
+    if (!ref) continue;
+    const lote = norm(row[9] || "") || null;
+    const sublote = norm(row[10] || "") || null;
+    const identityKey = makeIdentityKey(ref, lote, sublote);
+    if (seedMap.has(identityKey)) continue;
+    seedMap.set(identityKey, {
+      id: uuid(),
+      key: makeKey("", ref, lote, sublote),
+      identityKey,
+      sessionId,
+      sessionName,
+      ubicacion: "",
+      ref,
+      lote,
+      sublote,
+      cantidad: 0,
+      manual: false,
+      createdAt: now,
+    });
+  }
+
+  for (const row of seedMap.values()) {
+    await putLine(db, row);
+  }
+
+  session.expectedItems = seedMap.size;
+  await putInventorySession(db, session);
+  await renderSessionSelect();
+  await switchSession(sessionId);
+  if (el.sessionCounter) el.sessionCounter.value = "";
+  if (el.sessionSageFile) el.sessionSageFile.value = "";
+  setMsg(`Sesión ${sessionName} iniciada. Introduzca ubicación.`, "ok");
+}
 
 
 function updateSageStatusPanel() {
@@ -255,27 +437,32 @@ function updateSageFromCount({ ref, lote, sublote, ubicacion, cantidad = 1, manu
 }
 
 
-async function loadSageBaseFile(file) {
-  if (!file) return;
+async function loadSageBaseFile(file, targetSessionId = currentSessionId, opts = {}) {
+  if (!targetSessionId) {
+    setMsg("Selecciona una sesión antes de cargar base SAGE.", "warn");
+    return null;
+  }
+  if (!file) return null;
   const text = await file.text();
   const { baseE, baseL, baseS } = parseSageCsv(text);
   if (!baseS.length) {
     setMsg("CSV SAGE inválido: no se encontraron líneas S.", "err");
-    return;
+    return null;
   }
 
   const meta = detectSageMeta(baseE, baseL, baseS);
   const invId = meta.sageSesNum || "SAGE_NO_SESNUM";
-  const existingMeta = await getInventoryMeta(db, invId);
+  const metaId = `${targetSessionId || "global"}:${invId}`;
+  const existingMeta = await getInventoryMeta(db, metaId);
   if (existingMeta) {
     const overwrite = window.confirm(`Ya existe una base para ${invId}. Aceptar = sobrescribir, Cancelar = continuar.`);
     if (!overwrite) {
       setMsg(`Continuando con base SAGE existente: ${invId}.`, "warn");
-      return;
+      return null;
     }
   }
 
-  sageData = {
+  const loadedSageData = {
     ...meta,
     baseE,
     baseL,
@@ -285,20 +472,30 @@ async function loadSageBaseFile(file) {
     newLines: new Map(),
     sampleLine: baseS[0] || null,
     inventoryId: invId,
+    sessionId: targetSessionId || null,
   };
 
   await putInventoryMeta(db, {
-    id: invId,
+    id: metaId,
     inventoryId: invId,
     sesNum: meta.sageSesNum,
     stoFcy: meta.stoFcy,
+    sessionId: targetSessionId || null,
     updatedAt: Date.now(),
   });
+
+  sageDataBySession.set(targetSessionId, loadedSageData);
+  if (targetSessionId === currentSessionId) sageData = loadedSageData;
   updateSageStatusPanel();
-  setMsg(`Base SAGE cargada (${meta.sageSesNum || "sin SESNUM"}) con ${baseS.length} líneas S.`, "ok");
+  if (!opts.silent) setMsg(`Base SAGE cargada (${meta.sageSesNum || "sin SESNUM"}) con ${baseS.length} líneas S.`, "ok");
+  return loadedSageData;
 }
 
 function applyAllowZeroToSage() {
+  if (!isSessionClosed()) {
+    setMsg("Debes cerrar la sesión antes de aplicar permitir 0.", "warn");
+    return;
+  }
   if (!sageData?.baseS?.length) {
     setMsg("Primero debes cargar una base SAGE.", "warn");
     return;
@@ -356,6 +553,10 @@ function buildFinalSageLines() {
 }
 
 function exportSageCsv() {
+  if (!isSessionClosed()) {
+    setMsg("Debes cerrar la sesión antes de exportar CSV SAGE.", "warn");
+    return;
+  }
   if (!sageData?.baseS?.length) {
     setMsg("Primero debes cargar una base SAGE.", "warn");
     return;
@@ -415,8 +616,9 @@ function renderTable(lines) {
 
 async function refresh() {
   if (!db) return;
-  currentLines = await getAllLines(db);
+  currentLines = currentSessionId ? await getLinesBySession(db, currentSessionId) : await getAllLines(db);
   renderTable(currentLines);
+  updateProgress();
 }
 
 function parseCommand(raw) {
@@ -483,6 +685,14 @@ function buildGs1Human({ ref, lote, sublote }) {
 }
 
 async function registerLocation(locRaw) {
+  if (!currentSessionId) {
+    setMsg("Crea o selecciona una sesión antes de escanear.", "warn");
+    return;
+  }
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
+    return;
+  }
   const loc = norm(locRaw);
   if (!loc) {
     setMsg("Ubicación vacía. Vuelve a escanear.", "err");
@@ -495,93 +705,95 @@ async function registerLocation(locRaw) {
 }
 
 async function finishInventory() {
-  if (appState === STATE.FINISHED) {
-    setMsg("El inventario ya está finalizado.", "warn");
+  if (!currentSessionId || !currentSession) {
+    setMsg("No hay sesión activa.", "warn");
     return;
   }
+  if (isSessionClosed()) {
+    setMsg("La sesión ya está cerrada.", "warn");
+    return;
+  }
+  currentSession.status = "CLOSED";
+  currentSession.updatedAt = Date.now();
+  await putInventorySession(db, currentSession);
   setState(STATE.FINISHED);
   currentLoc = null;
+  setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
   if (el.locText) el.locText.textContent = "—";
-  setMsg("Inventario finalizado. Puedes exportar a Excel o CSV.", "warn");
+  setSessionInfo();
+  updateSageActionsVisibility();
+  setMsg("Sesión cerrada. Ya puedes aplicar permitir 0 y exportar CSV SAGE.", "warn");
 }
 
 async function closeCurrentLocation() {
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
+    return null;
+  }
   if (!currentLoc) {
     setMsg("No hay ubicación activa para cerrar.", "warn");
     return;
   }
   currentLoc = null;
+  setCountScreenVisible(true);
+  if (el.setupMsg) el.setupMsg.textContent = "";
   if (el.locText) el.locText.textContent = "—";
   setState(STATE.WAIT_LOC);
   setMsg("Ubicación cerrada. Escanea la siguiente ubicación.", "warn");
 }
 
 async function storeItem({ ref, lote, sublote, manual = false, cantidad = 1 }) {
+  if (!currentSessionId) {
+    setMsg("Crea o selecciona una sesión antes de registrar artículos.", "warn");
+    return null;
+  }
+  if (isSessionClosed()) {
+    setMsg("La sesión está cerrada. Crea una nueva para seguir contando.", "warn");
+    return null;
+  }
   if (!currentLoc) {
     setMsg("No hay ubicación activa. Escanea ubicación primero.", "err");
     setState(STATE.WAIT_LOC);
     return null;
   }
 
-  const key = makeKey(currentLoc, ref, lote, sublote);
-  const existing = await findByKey(db, key);
+  const identityKey = makeIdentityKey(ref, lote, sublote);
+  const existing = currentLines.find((l) => l.sessionId === currentSessionId && l.identityKey === identityKey);
 
-  if (sublote) {
-    if (existing.length > 0) {
-      setMsg(`DUPLICADO (con sublote) rechazado: ${ref} / ${lote ?? "-"} / ${sublote}`, "err");
-      return null;
-    }
-    const line = {
-      id: uuid(),
-      key,
-      ubicacion: currentLoc,
-      ref,
-      lote: lote ?? null,
-      sublote: sublote ?? null,
-      cantidad,
-      manual,
-      createdAt: Date.now(),
-    };
+  if (existing) {
+    existing.cantidad = Number(existing.cantidad || 0) + cantidad;
+    existing.ubicacion = currentLoc;
+    existing.key = makeKey(currentLoc, ref, lote, sublote);
+    existing.createdAt = Date.now();
+    existing.manual = Boolean(existing.manual || manual);
     const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
-    if (sageStatus) line.sageStatus = sageStatus;
-    await putLine(db, line);
-    updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
-    lastInsertedId = line.id;
-    setMsg(`OK: ${ref} (lote ${lote ?? "-"}) (sublote ${sublote})${manual ? " [manual]" : ""}`, "ok");
-    return line;
-  }
-
-  if (existing.length > 0) {
-    const line = existing[0];
-    line.cantidad += cantidad;
-    line.createdAt = Date.now();
-    line.manual = Boolean(line.manual || manual);
-    const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
-    if (sageStatus) line.sageStatus = sageStatus;
-    await putLine(db, line);
-    updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
-    lastInsertedId = line.id;
-    setMsg(`OK (agregado): ${ref} (lote ${lote ?? "-"}) → cantidad ${line.cantidad}${manual ? " [manual]" : ""}`, "ok");
-    return line;
+    if (sageStatus) existing.sageStatus = sageStatus;
+    await putLine(db, existing);
+    lastInsertedId = existing.id;
+    setMsg(`OK: ${ref} (${existing.cantidad})`, "ok");
+    return existing;
   }
 
   const line = {
     id: uuid(),
-    key,
+    key: makeKey(currentLoc, ref, lote, sublote),
+    identityKey,
     ubicacion: currentLoc,
     ref,
     lote: lote ?? null,
-    sublote: null,
+    sublote: sublote ?? null,
     cantidad,
     manual,
     createdAt: Date.now(),
+    sessionId: currentSessionId,
+    sessionName: currentSession?.name || "",
   };
   const sageStatus = updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad, manual });
   if (sageStatus) line.sageStatus = sageStatus;
   await putLine(db, line);
-  updateSageFromCount({ ref, lote, sublote, ubicacion: currentLoc, cantidad });
   lastInsertedId = line.id;
-  setMsg(`OK: ${ref} (lote ${lote ?? "-"})${manual ? " [manual]" : ""}`, "ok");
+  setMsg(`Nuevo artículo añadido: ${ref}${manual ? " [manual]" : ""}.`, "warn");
   return line;
 }
 
@@ -673,32 +885,13 @@ function openManualDialogForEdit(line) {
 }
 
 async function upsertEditedLine(line, { ref, lote, sublote, cantidad }) {
-  const newKey = makeKey(line.ubicacion, ref, lote, sublote);
-  const sameKey = newKey === line.key;
+  const identityKey = makeIdentityKey(ref, lote, sublote);
+  const conflict = currentLines.find((x) => x.sessionId === currentSessionId && x.identityKey === identityKey && x.id !== line.id);
 
-  if (sameKey) {
-    line.ref = ref;
-    line.lote = lote;
-    line.sublote = sublote;
-    line.cantidad = cantidad;
-    line.key = newKey;
-    line.manual = true;
-    line.createdAt = Date.now();
-    await putLine(db, line);
-    setMsg("Línea actualizada correctamente.", "ok");
-    return line;
-  }
-
-  const matches = await findByKey(db, newKey);
-  const conflict = matches.find((x) => x.id !== line.id);
-
-  if (conflict && sublote) {
-    setMsg("No se puede guardar: ya existe otra línea con el mismo REF/LOTE/SUBLOTE.", "err");
-    return null;
-  }
-
-  if (conflict && !sublote) {
-    conflict.cantidad += cantidad;
+  if (conflict) {
+    conflict.cantidad = Number(conflict.cantidad || 0) + cantidad;
+    conflict.ubicacion = line.ubicacion;
+    conflict.key = makeKey(conflict.ubicacion, ref, lote, sublote);
     conflict.manual = true;
     conflict.createdAt = Date.now();
     await putLine(db, conflict);
@@ -711,7 +904,8 @@ async function upsertEditedLine(line, { ref, lote, sublote, cantidad }) {
   line.lote = lote;
   line.sublote = sublote;
   line.cantidad = cantidad;
-  line.key = newKey;
+  line.identityKey = identityKey;
+  line.key = makeKey(line.ubicacion, ref, lote, sublote);
   line.manual = true;
   line.createdAt = Date.now();
   await putLine(db, line);
@@ -833,6 +1027,7 @@ function printLineLabel(line) {
 }
 
 function handleScan(raw) {
+  if (el.countingSection?.hidden) return;
   raw = normalizeScannerRaw(raw);
   raw = stripDemoPrefix(raw);
   if (!raw) return;
@@ -859,6 +1054,11 @@ function handleScan(raw) {
   if (cmd?.cmd === "NEXT_LOC") return closeCurrentLocation();
   if (cmd?.cmd === "LOC") return registerLocation(cmd.loc);
 
+  if (isSessionClosed()) {
+    setMsg("Sesión cerrada: solo puedes exportar resultados.", "warn");
+    return;
+  }
+
   if (appState === STATE.FINISHED) {
     setState(STATE.WAIT_LOC);
     setMsg("Se reanuda captura: escanea UBICACIÓN.", "warn");
@@ -880,7 +1080,7 @@ async function undoLast() {
 }
 
 async function doExport() {
-  const lines = await getAllLines(db);
+  const lines = currentSessionId ? await getLinesBySession(db, currentSessionId) : await getAllLines(db);
   if (!lines.length) {
     setMsg("No hay datos para exportar.", "warn");
     return;
@@ -890,7 +1090,7 @@ async function doExport() {
 }
 
 async function doExportCsv() {
-  const lines = await getAllLines(db);
+  const lines = currentSessionId ? await getLinesBySession(db, currentSessionId) : await getAllLines(db);
   if (!lines.length) {
     setMsg("No hay datos para exportar.", "warn");
     return;
@@ -900,7 +1100,11 @@ async function doExportCsv() {
 }
 
 async function doReset() {
-  await clearAll(db);
+  if (currentSessionId) {
+    await clearLinesBySession(db, currentSessionId);
+  } else {
+    await clearAll(db);
+  }
   currentLoc = null;
   lastInsertedId = null;
   if (sageData) {
@@ -1062,6 +1266,29 @@ async function main() {
 
   hookScannerInput();
 
+  safeOn(el.btnCreateSession, "click", async () => {
+    const contador = norm(el.sessionCounter?.value || "");
+    const baseFile = el.sessionSageFile?.files?.[0] || null;
+    setCreateSessionBusy(true);
+    try {
+      await createInventorySession({ contador, baseFile });
+    } catch (e) {
+      console.error(e);
+      setMsg("Error iniciando conteo: " + (e?.message || e), "err");
+    } finally {
+      setCreateSessionBusy(false);
+    }
+  });
+
+  safeOn(el.btnOpenSession, "click", async () => {
+    const id = el.sessionSelect?.value;
+    if (!id) {
+      setMsg("Selecciona una sesión para abrir.", "warn");
+      return;
+    }
+    await switchSession(id);
+  });
+
   safeOn(el.btnUndo, "click", async () => { await undoLast(); });
   safeOn(el.btnMenuUndo, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await undoLast(); });
   const onTogglePdaMode = (evt) => {
@@ -1116,13 +1343,6 @@ async function main() {
   safeOn(el.btnMenuExport, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExport(); });
   safeOn(el.btnExportCsv, "click", async () => { await doExportCsv(); });
   safeOn(el.btnMenuExportCsv, "click", async (evt) => { closeDetailsMenuFromEvent(evt); await doExportCsv(); });
-  safeOn(el.btnLoadSage, "click", () => el.sageBaseInput?.click?.());
-  safeOn(el.btnMenuLoadSage, "click", (evt) => { closeDetailsMenuFromEvent(evt); el.sageBaseInput?.click?.(); });
-  safeOn(el.sageBaseInput, "change", async (evt) => {
-    const file = evt?.target?.files?.[0];
-    await loadSageBaseFile(file);
-    evt.target.value = "";
-  });
   safeOn(el.btnAllowZero, "click", () => applyAllowZeroToSage());
   safeOn(el.btnMenuAllowZero, "click", (evt) => { closeDetailsMenuFromEvent(evt); applyAllowZeroToSage(); });
   safeOn(el.btnExportSage, "click", () => exportSageCsv());
@@ -1141,10 +1361,28 @@ async function main() {
     if (stored != null) pdaMode = stored === "1";
   } catch (_) {}
   updatePdaModeUi();
-  setState(STATE.WAIT_LOC);
-  updateSageStatusPanel();
-  setMsg("Listo. Escanea una UBICACIÓN.", "ok");
-  await refresh();
+  updateSageActionsVisibility();
+  setCountScreenVisible(false);
+
+  await renderSessionSelect();
+  let preferredSessionId = null;
+  try {
+    preferredSessionId = localStorage.getItem("inventario_active_session");
+  } catch (_) {}
+
+  const sessions = await getInventorySessions(db);
+  const existing = sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (preferredSessionId && existing.some((s) => s.id === preferredSessionId)) {
+    await switchSession(preferredSessionId);
+  } else if (existing.length) {
+    await switchSession(existing[0].id);
+  } else {
+    setSessionInfo();
+    updateSageStatusPanel();
+    updateSageActionsVisibility();
+    setMsg("Carga CSV SAGE y contador para iniciar conteo o reabre una sesión.", "warn");
+    await refresh();
+  }
 }
 
 main().catch((err) => {
